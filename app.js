@@ -19,14 +19,16 @@ function switchTab(tab) {
     event.target.classList.add('active');
     document.getElementById(`${tab}-tab`).classList.add('active');
 
-    // Atualizar gráficos quando abrir a aba overview
     if (tab === 'overview') {
         manager.renderCharts();
     }
 
-    // Atualizar lista de categorias quando abrir a aba
-    if (tab === 'categories') {
+    if (tab === 'settings') {
         manager.renderCategoryManagement();
+    }
+
+    if (tab === 'cards') {
+        manager.renderCardInvoices();
     }
 }
 
@@ -74,6 +76,7 @@ function exportPDF() {
 
     const totals = manager.getMonthlyTotals();
     const breakdown = manager.getCategoryBreakdown();
+    const paymentBreakdown = manager.getPaymentBreakdown();
 
     doc.setFontSize(20);
     doc.text('Relatório Financeiro', 105, 20, { align: 'center' });
@@ -90,6 +93,24 @@ function exportPDF() {
     doc.text(`Despesas: R$ ${totals.expenses.toFixed(2)}`, 20, 67);
     doc.text(`Saldo: R$ ${totals.balance.toFixed(2)}`, 20, 74);
 
+    // Gastos por forma de pagamento
+    if (paymentBreakdown.length > 0) {
+        const paymentData = paymentBreakdown.map(item => [
+            item.method,
+            `R$ ${item.amount.toFixed(2)}`,
+            `${item.percentage.toFixed(1)}%`
+        ]);
+
+        doc.autoTable({
+            startY: 85,
+            head: [['Forma de Pagamento', 'Valor', '% do Total']],
+            body: paymentData,
+            theme: 'grid',
+            headStyles: { fillColor: [219, 39, 119] }
+        });
+    }
+
+    // Categorias
     if (breakdown.length > 0) {
         const tableData = breakdown.map(item => [
             item.category,
@@ -99,29 +120,11 @@ function exportPDF() {
         ]);
 
         doc.autoTable({
-            startY: 85,
+            startY: doc.lastAutoTable ? doc.lastAutoTable.finalY + 15 : 120,
             head: [['Categoria', 'Valor', '% Despesas', '% Receita']],
             body: tableData,
             theme: 'grid',
             headStyles: { fillColor: [99, 102, 241] }
-        });
-    }
-
-    if (manager.expenses.length > 0) {
-        const expenseData = manager.getFilteredExpenses().slice(0, 20).map(exp => [
-            new Date(exp.date).toLocaleDateString('pt-BR'),
-            exp.category,
-            exp.description || '-',
-            exp.recurring ? 'Sim' : 'Não',
-            `R$ ${exp.amount.toFixed(2)}`
-        ]);
-
-        doc.autoTable({
-            startY: doc.lastAutoTable.finalY + 15,
-            head: [['Data', 'Categoria', 'Descrição', 'Recorrente', 'Valor']],
-            body: expenseData,
-            theme: 'striped',
-            headStyles: { fillColor: [239, 68, 68] }
         });
     }
 
@@ -152,6 +155,8 @@ function exportExcel() {
             'Data': new Date(exp.date).toLocaleDateString('pt-BR'),
             'Categoria': exp.category,
             'Descrição': exp.description || '-',
+            'Forma de Pagamento': exp.paymentMethod || '-',
+            'Parcelas': exp.installments ? `${exp.paidInstallments || 0}/${exp.installments}` : '-',
             'Recorrente': exp.recurring ? 'Sim' : 'Não',
             'Valor': exp.amount,
             'Vencimento': exp.dueDate ? new Date(exp.dueDate).toLocaleDateString('pt-BR') : '-'
@@ -172,18 +177,15 @@ function exportExcel() {
         XLSX.utils.book_append_sheet(wb, wsIncome, 'Receitas');
     }
 
-    if (manager.creditPurchases && manager.creditPurchases.length > 0) {
-        const creditData = manager.creditPurchases.map(purchase => ({
-            'Data': new Date(purchase.date).toLocaleDateString('pt-BR'),
-            'Descrição': purchase.description,
-            'Categoria': purchase.category,
-            'Valor Total': purchase.totalAmount,
-            'Parcelas': purchase.installments,
-            'Valor da Parcela': purchase.installmentAmount,
-            'Parcelas Pagas': purchase.paidInstallments
+    const paymentBreakdown = manager.getPaymentBreakdown();
+    if (paymentBreakdown.length > 0) {
+        const paymentData = paymentBreakdown.map(item => ({
+            'Forma de Pagamento': item.method,
+            'Valor': item.amount,
+            'Percentual': item.percentage.toFixed(1) + '%'
         }));
-        const wsCredit = XLSX.utils.json_to_sheet(creditData);
-        XLSX.utils.book_append_sheet(wb, wsCredit, 'Cartão de Crédito');
+        const wsPayment = XLSX.utils.json_to_sheet(paymentData);
+        XLSX.utils.book_append_sheet(wb, wsPayment, 'Por Forma de Pagamento');
     }
 
     const breakdown = manager.getCategoryBreakdown();
@@ -221,9 +223,9 @@ function syncWithCode() {
     const myData = {
         expenses: manager.expenses,
         income: manager.income,
-        creditPurchases: manager.creditPurchases || [],
         expenseCategories: manager.expenseCategories,
-        incomeCategories: manager.incomeCategories
+        incomeCategories: manager.incomeCategories,
+        creditCards: manager.creditCards
     };
 
     localStorage.setItem(`sync_${inputCode}`, JSON.stringify(myData));
@@ -234,15 +236,12 @@ function syncWithCode() {
 
         manager.expenses = [...manager.expenses, ...parsed.expenses];
         manager.income = [...manager.income, ...parsed.income];
-        manager.creditPurchases = [...(manager.creditPurchases || []), ...(parsed.creditPurchases || [])];
 
         manager.expenses = Array.from(new Map(manager.expenses.map(item => [item.id, item])).values());
         manager.income = Array.from(new Map(manager.income.map(item => [item.id, item])).values());
-        manager.creditPurchases = Array.from(new Map((manager.creditPurchases || []).map(item => [item.id, item])).values());
 
         manager.saveData('expenses', manager.expenses);
         manager.saveData('income', manager.income);
-        manager.saveData('creditPurchases', manager.creditPurchases);
 
         manager.render();
         showToast('✅ Dados sincronizados!');
@@ -256,12 +255,10 @@ class FinanceManager {
     constructor() {
         this.expenses = this.loadData('expenses') || [];
         this.income = this.loadData('income') || [];
-        this.creditPurchases = this.loadData('creditPurchases') || [];
         this.expenseFilter = 'all';
         this.incomeFilter = 'all';
         this.charts = {};
 
-        // Mês e ano selecionados
         this.selectedMonth = new Date().getMonth();
         this.selectedYear = new Date().getFullYear();
 
@@ -276,9 +273,17 @@ class FinanceManager {
             '💼 Salário', '💻 Freelance', '📈 Investimentos', '💵 Outros'
         ];
 
-        // Carregar categorias personalizadas
+        // Formas de pagamento padrão
+        this.defaultPaymentMethods = [
+            '💵 Dinheiro',
+            '📱 PIX',
+            '💳 Cartão de Débito',
+            '💳 Cartão de Crédito'
+        ];
+
         this.expenseCategories = this.loadData('expenseCategories') || [...this.defaultExpenseCategories];
         this.incomeCategories = this.loadData('incomeCategories') || [...this.defaultIncomeCategories];
+        this.creditCards = this.loadData('creditCards') || [];
 
         this.init();
     }
@@ -286,7 +291,7 @@ class FinanceManager {
     init() {
         this.setupEventListeners();
         this.processRecurringItems();
-        this.populateCategorySelects();
+        this.populateSelects();
         this.updateMonthDisplay();
         this.render();
         requestNotificationPermission();
@@ -299,7 +304,6 @@ class FinanceManager {
             document.getElementById('syncCode').textContent = savedCode;
         }
 
-        // Definir data de hoje nos campos de data
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('expenseDate').value = today;
         document.getElementById('incomeDate').value = today;
@@ -315,11 +319,192 @@ class FinanceManager {
             e.preventDefault();
             this.addIncome();
         });
+    }
 
-        document.getElementById('creditForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.addCreditPurchase();
-        });
+    handlePaymentMethodChange() {
+        const paymentMethod = document.getElementById('expensePaymentMethod').value;
+        const installmentsSection = document.getElementById('installmentsSection');
+
+        // Mostrar parcelas apenas se for cartão de crédito (personalizado ou genérico)
+        const isCreditCard = paymentMethod.includes('Crédito') || 
+                            this.creditCards.some(card => paymentMethod === card);
+
+        if (isCreditCard) {
+            installmentsSection.classList.add('show');
+        } else {
+            installmentsSection.classList.remove('show');
+        }
+    }
+
+    getAllPaymentMethods() {
+        return [
+            ...this.defaultPaymentMethods,
+            ...this.creditCards
+        ];
+    }
+
+    populateSelects() {
+        const expenseSelect = document.getElementById('expenseCategory');
+        const incomeSelect = document.getElementById('incomeCategory');
+        const paymentSelect = document.getElementById('expensePaymentMethod');
+
+        expenseSelect.innerHTML = '<option value="">Selecione...</option>' +
+            this.expenseCategories.map(cat => `<option value="${cat}">${cat}</option>`).join('');
+
+        incomeSelect.innerHTML = '<option value="">Selecione...</option>' +
+            this.incomeCategories.map(cat => `<option value="${cat}">${cat}</option>`).join('');
+
+        const paymentMethods = this.getAllPaymentMethods();
+        paymentSelect.innerHTML = '<option value="">Selecione...</option>' +
+            paymentMethods.map(method => `<option value="${method}">${method}</option>`).join('');
+    }
+
+    addExpenseCategory() {
+        const input = document.getElementById('newExpenseCategory');
+        const category = input.value.trim();
+
+        if (!category) {
+            showToast('⚠️ Digite um nome para a categoria');
+            return;
+        }
+
+        if (this.expenseCategories.includes(category)) {
+            showToast('⚠️ Categoria já existe');
+            return;
+        }
+
+        this.expenseCategories.push(category);
+        this.saveData('expenseCategories', this.expenseCategories);
+        this.populateSelects();
+        this.renderCategoryManagement();
+        input.value = '';
+        showToast('✅ Categoria adicionada!');
+    }
+
+    removeExpenseCategory(category) {
+        if (this.defaultExpenseCategories.includes(category)) {
+            showToast('⚠️ Não é possível remover categorias padrão');
+            return;
+        }
+
+        if (confirm(`Remover a categoria "${category}"?`)) {
+            this.expenseCategories = this.expenseCategories.filter(c => c !== category);
+            this.saveData('expenseCategories', this.expenseCategories);
+            this.populateSelects();
+            this.renderCategoryManagement();
+            showToast('🗑️ Categoria removida!');
+        }
+    }
+
+    addIncomeCategory() {
+        const input = document.getElementById('newIncomeCategory');
+        const category = input.value.trim();
+
+        if (!category) {
+            showToast('⚠️ Digite um nome para a categoria');
+            return;
+        }
+
+        if (this.incomeCategories.includes(category)) {
+            showToast('⚠️ Categoria já existe');
+            return;
+        }
+
+        this.incomeCategories.push(category);
+        this.saveData('incomeCategories', this.incomeCategories);
+        this.populateSelects();
+        this.renderCategoryManagement();
+        input.value = '';
+        showToast('✅ Categoria adicionada!');
+    }
+
+    removeIncomeCategory(category) {
+        if (this.defaultIncomeCategories.includes(category)) {
+            showToast('⚠️ Não é possível remover categorias padrão');
+            return;
+        }
+
+        if (confirm(`Remover a categoria "${category}"?`)) {
+            this.incomeCategories = this.incomeCategories.filter(c => c !== category);
+            this.saveData('incomeCategories', this.incomeCategories);
+            this.populateSelects();
+            this.renderCategoryManagement();
+            showToast('🗑️ Categoria removida!');
+        }
+    }
+
+    addCreditCard() {
+        const input = document.getElementById('newCreditCard');
+        let cardName = input.value.trim();
+
+        if (!cardName) {
+            showToast('⚠️ Digite o nome do cartão');
+            return;
+        }
+
+        // Adicionar emoji se não tiver
+        if (!cardName.includes('💳')) {
+            cardName = `💳 ${cardName} Crédito`;
+        }
+
+        if (this.creditCards.includes(cardName)) {
+            showToast('⚠️ Cartão já existe');
+            return;
+        }
+
+        this.creditCards.push(cardName);
+        this.saveData('creditCards', this.creditCards);
+        this.populateSelects();
+        this.renderCategoryManagement();
+        input.value = '';
+        showToast('✅ Cartão adicionado!');
+    }
+
+    removeCreditCard(cardName) {
+        if (confirm(`Remover o cartão "${cardName}"?`)) {
+            this.creditCards = this.creditCards.filter(c => c !== cardName);
+            this.saveData('creditCards', this.creditCards);
+            this.populateSelects();
+            this.renderCategoryManagement();
+            showToast('🗑️ Cartão removido!');
+        }
+    }
+
+    renderCategoryManagement() {
+        const expenseList = document.getElementById('expenseCategoriesList');
+        const incomeList = document.getElementById('incomeCategoriesList');
+        const cardsList = document.getElementById('creditCardsList');
+
+        expenseList.innerHTML = this.expenseCategories.map(cat => {
+            const isDefault = this.defaultExpenseCategories.includes(cat);
+            return `
+                <div class="category-tag">
+                    ${cat}
+                    ${!isDefault ? `<button onclick="manager.removeExpenseCategory('${cat}')">✕</button>` : ''}
+                </div>
+            `;
+        }).join('');
+
+        incomeList.innerHTML = this.incomeCategories.map(cat => {
+            const isDefault = this.defaultIncomeCategories.includes(cat);
+            return `
+                <div class="category-tag">
+                    ${cat}
+                    ${!isDefault ? `<button onclick="manager.removeIncomeCategory('${cat}')">✕</button>` : ''}
+                </div>
+            `;
+        }).join('');
+
+        if (this.creditCards.length === 0) {
+            cardsList.innerHTML = '<p style="color: #9ca3af; font-size: 14px;">Nenhum cartão cadastrado</p>';
+        } else {
+            cardsList.innerHTML = this.creditCards.map(card => `
+                <div class="category-tag">
+                    ${card}
+                    <button onclick="manager.removeCreditCard('${card}')">✕</button>
+                </div>
+            `).join('');
+        }
     }
 
     changeMonth(direction) {
@@ -360,14 +545,12 @@ class FinanceManager {
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
 
-        // Processar despesas recorrentes
         this.expenses.forEach(expense => {
             if (expense.recurring && expense.originalDate) {
                 const expenseDate = new Date(expense.originalDate);
                 const expenseMonth = expenseDate.getMonth();
                 const expenseYear = expenseDate.getFullYear();
 
-                // Se a despesa recorrente é de um mês anterior, criar cópia para o mês atual
                 if (expenseYear < currentYear || (expenseYear === currentYear && expenseMonth < currentMonth)) {
                     const existsInCurrentMonth = this.expenses.some(e => 
                         e.recurringParentId === expense.id &&
@@ -382,6 +565,8 @@ class FinanceManager {
                             amount: expense.amount,
                             category: expense.category,
                             description: expense.description,
+                            paymentMethod: expense.paymentMethod,
+                            installments: expense.installments,
                             dueDate: expense.dueDate ? new Date(currentYear, currentMonth, new Date(expense.dueDate).getDate()).toISOString().split('T')[0] : null,
                             date: newDate.toISOString(),
                             recurring: true,
@@ -392,7 +577,6 @@ class FinanceManager {
             }
         });
 
-        // Processar receitas recorrentes
         this.income.forEach(income => {
             if (income.recurring && income.originalDate) {
                 const incomeDate = new Date(income.originalDate);
@@ -426,136 +610,39 @@ class FinanceManager {
         this.saveData('income', this.income);
     }
 
-    populateCategorySelects() {
-        const expenseSelect = document.getElementById('expenseCategory');
-        const incomeSelect = document.getElementById('incomeCategory');
-        const creditSelect = document.getElementById('creditCategory');
-
-        expenseSelect.innerHTML = '<option value="">Selecione...</option>' +
-            this.expenseCategories.map(cat => `<option value="${cat}">${cat}</option>`).join('');
-
-        incomeSelect.innerHTML = '<option value="">Selecione...</option>' +
-            this.incomeCategories.map(cat => `<option value="${cat}">${cat}</option>`).join('');
-
-        creditSelect.innerHTML = '<option value="">Selecione...</option>' +
-            this.expenseCategories.map(cat => `<option value="${cat}">${cat}</option>`).join('');
-    }
-
-    addExpenseCategory() {
-        const input = document.getElementById('newExpenseCategory');
-        const category = input.value.trim();
-
-        if (!category) {
-            showToast('⚠️ Digite um nome para a categoria');
-            return;
-        }
-
-        if (this.expenseCategories.includes(category)) {
-            showToast('⚠️ Categoria já existe');
-            return;
-        }
-
-        this.expenseCategories.push(category);
-        this.saveData('expenseCategories', this.expenseCategories);
-        this.populateCategorySelects();
-        this.renderCategoryManagement();
-        input.value = '';
-        showToast('✅ Categoria adicionada!');
-    }
-
-    removeExpenseCategory(category) {
-        if (this.defaultExpenseCategories.includes(category)) {
-            showToast('⚠️ Não é possível remover categorias padrão');
-            return;
-        }
-
-        if (confirm(`Remover a categoria "${category}"?`)) {
-            this.expenseCategories = this.expenseCategories.filter(c => c !== category);
-            this.saveData('expenseCategories', this.expenseCategories);
-            this.populateCategorySelects();
-            this.renderCategoryManagement();
-            showToast('🗑️ Categoria removida!');
-        }
-    }
-
-    addIncomeCategory() {
-        const input = document.getElementById('newIncomeCategory');
-        const category = input.value.trim();
-
-        if (!category) {
-            showToast('⚠️ Digite um nome para a categoria');
-            return;
-        }
-
-        if (this.incomeCategories.includes(category)) {
-            showToast('⚠️ Categoria já existe');
-            return;
-        }
-
-        this.incomeCategories.push(category);
-        this.saveData('incomeCategories', this.incomeCategories);
-        this.populateCategorySelects();
-        this.renderCategoryManagement();
-        input.value = '';
-        showToast('✅ Categoria adicionada!');
-    }
-
-    removeIncomeCategory(category) {
-        if (this.defaultIncomeCategories.includes(category)) {
-            showToast('⚠️ Não é possível remover categorias padrão');
-            return;
-        }
-
-        if (confirm(`Remover a categoria "${category}"?`)) {
-            this.incomeCategories = this.incomeCategories.filter(c => c !== category);
-            this.saveData('incomeCategories', this.incomeCategories);
-            this.populateCategorySelects();
-            this.renderCategoryManagement();
-            showToast('🗑️ Categoria removida!');
-        }
-    }
-
-    renderCategoryManagement() {
-        const expenseList = document.getElementById('expenseCategoriesList');
-        const incomeList = document.getElementById('incomeCategoriesList');
-
-        expenseList.innerHTML = this.expenseCategories.map(cat => {
-            const isDefault = this.defaultExpenseCategories.includes(cat);
-            return `
-                <div class="category-tag">
-                    ${cat}
-                    ${!isDefault ? `<button onclick="manager.removeExpenseCategory('${cat}')">✕</button>` : ''}
-                </div>
-            `;
-        }).join('');
-
-        incomeList.innerHTML = this.incomeCategories.map(cat => {
-            const isDefault = this.defaultIncomeCategories.includes(cat);
-            return `
-                <div class="category-tag">
-                    ${cat}
-                    ${!isDefault ? `<button onclick="manager.removeIncomeCategory('${cat}')">✕</button>` : ''}
-                </div>
-            `;
-        }).join('');
-    }
-
     addExpense() {
         const amount = parseFloat(document.getElementById('expenseAmount').value);
         const category = document.getElementById('expenseCategory').value;
+        const paymentMethod = document.getElementById('expensePaymentMethod').value;
         const description = document.getElementById('expenseDescription').value;
         const date = document.getElementById('expenseDate').value;
         const dueDate = document.getElementById('expenseDueDate').value;
         const recurring = document.getElementById('expenseRecurring').checked;
 
+        const isCreditCard = paymentMethod.includes('Crédito') || 
+                            this.creditCards.some(card => paymentMethod === card);
+
+        let installments = 1;
+        let installmentAmount = amount;
+
+        if (isCreditCard) {
+            installments = parseInt(document.getElementById('expenseInstallments').value) || 1;
+            installmentAmount = amount / installments;
+        }
+
         const expense = {
             id: Date.now(),
-            amount,
+            amount: installmentAmount,
+            totalAmount: amount,
             category,
+            paymentMethod,
             description,
             dueDate: dueDate || null,
             date: new Date(date).toISOString(),
-            recurring
+            recurring,
+            installments: isCreditCard ? installments : null,
+            paidInstallments: isCreditCard ? 0 : null,
+            isCreditPurchase: isCreditCard && installments > 1
         };
 
         if (recurring) {
@@ -567,6 +654,7 @@ class FinanceManager {
         this.render();
         document.getElementById('expenseForm').reset();
         document.getElementById('expenseDate').value = new Date().toISOString().split('T')[0];
+        document.getElementById('installmentsSection').classList.remove('show');
         showToast('✅ Despesa adicionada!');
     }
 
@@ -598,31 +686,6 @@ class FinanceManager {
         showToast('✅ Receita adicionada!');
     }
 
-    addCreditPurchase() {
-        const totalAmount = parseFloat(document.getElementById('creditAmount').value);
-        const installments = parseInt(document.getElementById('creditInstallments').value);
-        const category = document.getElementById('creditCategory').value;
-        const description = document.getElementById('creditDescription').value;
-
-        const installmentAmount = totalAmount / installments;
-
-        this.creditPurchases.unshift({
-            id: Date.now(),
-            totalAmount,
-            installments,
-            installmentAmount,
-            category,
-            description,
-            paidInstallments: 0,
-            date: new Date().toISOString()
-        });
-
-        this.saveData('creditPurchases', this.creditPurchases);
-        this.render();
-        document.getElementById('creditForm').reset();
-        showToast('✅ Compra no cartão adicionada!');
-    }
-
     deleteExpense(id) {
         if (confirm('Excluir esta despesa?')) {
             this.expenses = this.expenses.filter(e => e.id !== id);
@@ -641,20 +704,11 @@ class FinanceManager {
         }
     }
 
-    deleteCreditPurchase(id) {
-        if (confirm('Excluir esta compra?')) {
-            this.creditPurchases = this.creditPurchases.filter(c => c.id !== id);
-            this.saveData('creditPurchases', this.creditPurchases);
-            this.render();
-            showToast('🗑️ Compra excluída!');
-        }
-    }
-
     payInstallment(id) {
-        const purchase = this.creditPurchases.find(p => p.id === id);
-        if (purchase && purchase.paidInstallments < purchase.installments) {
-            purchase.paidInstallments++;
-            this.saveData('creditPurchases', this.creditPurchases);
+        const expense = this.expenses.find(e => e.id === id);
+        if (expense && expense.paidInstallments < expense.installments) {
+            expense.paidInstallments++;
+            this.saveData('expenses', this.expenses);
             this.render();
             showToast('✅ Parcela paga!');
         }
@@ -708,14 +762,10 @@ class FinanceManager {
             })
             .reduce((sum, i) => sum + i.amount, 0);
 
-        const creditExpenses = this.creditPurchases
-            .filter(c => c.paidInstallments < c.installments)
-            .reduce((sum, c) => sum + c.installmentAmount, 0);
-
         return {
-            expenses: monthlyExpenses + creditExpenses,
+            expenses: monthlyExpenses,
             income: monthlyIncome,
-            balance: monthlyIncome - (monthlyExpenses + creditExpenses)
+            balance: monthlyIncome - monthlyExpenses
         };
     }
 
@@ -746,10 +796,103 @@ class FinanceManager {
             .sort((a, b) => b.amount - a.amount);
     }
 
+    getPaymentBreakdown() {
+        const monthStart = new Date(this.selectedYear, this.selectedMonth, 1);
+        const monthEnd = new Date(this.selectedYear, this.selectedMonth + 1, 0);
+
+        const monthlyExpenses = this.expenses.filter(e => {
+            const eDate = new Date(e.date);
+            return eDate >= monthStart && eDate <= monthEnd;
+        });
+
+        const total = monthlyExpenses.reduce((sum, e) => sum + e.amount, 0);
+
+        const breakdown = {};
+        monthlyExpenses.forEach(expense => {
+            const method = expense.paymentMethod || '❓ Não especificado';
+            breakdown[method] = (breakdown[method] || 0) + expense.amount;
+        });
+
+        return Object.entries(breakdown)
+            .map(([method, amount]) => ({
+                method,
+                amount,
+                percentage: total > 0 ? (amount / total * 100) : 0
+            }))
+            .sort((a, b) => b.amount - a.amount);
+    }
+
+    getCardInvoices() {
+        const monthStart = new Date(this.selectedYear, this.selectedMonth, 1);
+        const monthEnd = new Date(this.selectedYear, this.selectedMonth + 1, 0);
+
+        const creditExpenses = this.expenses.filter(e => {
+            const eDate = new Date(e.date);
+            const isInMonth = eDate >= monthStart && eDate <= monthEnd;
+            const isCreditCard = e.paymentMethod && 
+                               (e.paymentMethod.includes('Crédito') || 
+                                this.creditCards.some(card => e.paymentMethod === card));
+            return isInMonth && isCreditCard;
+        });
+
+        const invoices = {};
+        creditExpenses.forEach(expense => {
+            const card = expense.paymentMethod;
+            if (!invoices[card]) {
+                invoices[card] = {
+                    card,
+                    total: 0,
+                    items: []
+                };
+            }
+            invoices[card].total += expense.amount;
+            invoices[card].items.push(expense);
+        });
+
+        return Object.values(invoices);
+    }
+
+    renderCardInvoices() {
+        const invoices = this.getCardInvoices();
+        const container = document.getElementById('cardInvoices');
+
+        if (invoices.length === 0) {
+            container.innerHTML = '<div class="empty-state"><div class="empty-icon">💳</div>Nenhuma compra no crédito este mês</div>';
+            return;
+        }
+
+        container.innerHTML = invoices.map(invoice => `
+            <div class="card-invoice">
+                <div class="card-invoice-header">
+                    <div class="card-name">${invoice.card}</div>
+                    <div class="card-total">R$ ${invoice.total.toFixed(2)}</div>
+                </div>
+                <div style="font-size: 13px; color: #78350f; margin-top: 8px;">
+                    ${invoice.items.length} compra(s) neste mês
+                </div>
+                ${invoice.items.map(item => `
+                    <div style="padding: 12px 0; border-top: 1px solid #fde68a; margin-top: 8px;">
+                        <div style="font-weight: 600; color: #92400e; font-size: 14px;">${item.description || item.category}</div>
+                        <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+                            <span style="font-size: 12px; color: #78350f;">
+                                ${item.installments > 1 ? `${item.paidInstallments}/${item.installments} parcelas` : 'À vista'}
+                            </span>
+                            <span style="font-weight: 700; color: #f59e0b;">R$ ${item.amount.toFixed(2)}</span>
+                        </div>
+                        ${item.installments > 1 && item.paidInstallments < item.installments ? `
+                            <button class="btn secondary" style="margin-top: 8px; padding: 8px; font-size: 12px;" onclick="manager.payInstallment(${item.id})">
+                                Pagar Parcela
+                            </button>
+                        ` : ''}
+                    </div>
+                `).join('')}
+            </div>
+        `).join('');
+    }
+
     renderCharts() {
         const breakdown = this.getCategoryBreakdown();
 
-        // Gráfico de Pizza - Categorias
         const ctxCategory = document.getElementById('categoryChart');
         if (this.charts.category) this.charts.category.destroy();
 
@@ -779,7 +922,6 @@ class FinanceManager {
             });
         }
 
-        // Gráfico de Barras - Evolução (últimos 6 meses)
         const ctxEvolution = document.getElementById('evolutionChart');
         if (this.charts.evolution) this.charts.evolution.destroy();
 
@@ -845,13 +987,13 @@ class FinanceManager {
         this.renderOverview();
         this.renderExpenses();
         this.renderIncome();
-        this.renderCredit();
         this.renderNotifications();
     }
 
     renderOverview() {
         const totals = this.getMonthlyTotals();
         const breakdown = this.getCategoryBreakdown();
+        const paymentBreakdown = this.getPaymentBreakdown();
 
         document.getElementById('summaryIncome').textContent = `R$ ${this.formatShort(totals.income)}`;
         document.getElementById('summaryExpense').textContent = `R$ ${this.formatShort(totals.expenses)}`;
@@ -862,6 +1004,27 @@ class FinanceManager {
         balanceEl.className = 'balance-amount';
         if (totals.balance > 0) balanceEl.classList.add('positive');
         if (totals.balance < 0) balanceEl.classList.add('negative');
+
+        // Gastos por forma de pagamento
+        const paymentEl = document.getElementById('paymentBreakdown');
+        if (paymentBreakdown.length === 0) {
+            paymentEl.innerHTML = '<div class="empty-state"><div class="empty-icon">💳</div>Nenhuma despesa registrada</div>';
+        } else {
+            paymentEl.innerHTML = paymentBreakdown.map(item => `
+                <div class="category-item">
+                    <div class="category-header">
+                        <div class="category-name">${item.method}</div>
+                        <div class="category-stats">
+                            <div class="category-amount">R$ ${item.amount.toFixed(2)}</div>
+                            <div class="category-percentage">${item.percentage.toFixed(1)}% do total</div>
+                        </div>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${Math.min(item.percentage, 100)}%; background: linear-gradient(90deg, #db2777 0%, #be185d 100%);"></div>
+                    </div>
+                </div>
+            `).join('');
+        }
 
         // Percentual sobre receita
         const percentageEl = document.getElementById('percentageBreakdown');
@@ -904,12 +1067,22 @@ class FinanceManager {
                 <div class="item-info">
                     <span class="item-category">${expense.category}</span>
                     ${expense.recurring ? '<span class="recurring-badge">🔄 Recorrente</span>' : ''}
+                    ${expense.paymentMethod ? `<span class="payment-badge">${expense.paymentMethod}</span>` : ''}
                     <div class="item-description">${expense.description || 'Sem descrição'}</div>
+                    ${expense.installments && expense.installments > 1 ? `
+                        <div class="item-installment">
+                            ${expense.paidInstallments}/${expense.installments} parcelas pagas
+                            ${expense.paidInstallments < expense.installments ? ` - Faltam ${expense.installments - expense.paidInstallments}x` : ' - ✅ Quitado'}
+                        </div>
+                    ` : ''}
                     <div class="item-date">${this.formatDate(expense.date)}</div>
                     ${expense.dueDate ? `<div class="item-date">Vence: ${new Date(expense.dueDate).toLocaleDateString('pt-BR')}</div>` : ''}
                 </div>
-                <div style="display: flex; align-items: center;">
+                <div style="display: flex; align-items: center; flex-direction: column; gap: 8px;">
                     <div class="item-amount">R$ ${expense.amount.toFixed(2)}</div>
+                    ${expense.installments && expense.installments > 1 && expense.paidInstallments < expense.installments ? `
+                        <button class="btn secondary" style="padding: 6px 12px; font-size: 12px; width: auto;" onclick="manager.payInstallment(${expense.id})">Pagar Parcela</button>
+                    ` : ''}
                     <button class="delete-btn" onclick="manager.deleteExpense(${expense.id})">✕</button>
                 </div>
             </div>
@@ -942,45 +1115,6 @@ class FinanceManager {
                 </div>
             </div>
         `).join('');
-    }
-
-    renderCredit() {
-        const totalCredit = this.creditPurchases
-            .filter(c => c.paidInstallments < c.installments)
-            .reduce((sum, c) => sum + c.installmentAmount, 0);
-
-        document.getElementById('totalCredit').textContent = `R$ ${totalCredit.toFixed(2)}`;
-
-        const list = document.getElementById('creditList');
-
-        if (this.creditPurchases.length === 0) {
-            list.innerHTML = '<div class="empty-state"><div class="empty-icon">💳</div>Nenhuma compra no cartão</div>';
-            return;
-        }
-
-        list.innerHTML = this.creditPurchases.map(purchase => {
-            const remaining = purchase.installments - purchase.paidInstallments;
-            const isComplete = remaining === 0;
-
-            return `
-                <div class="item">
-                    <div class="item-info">
-                        <span class="item-category credit">${purchase.category}</span>
-                        <div class="item-description">${purchase.description}</div>
-                        <div class="item-installment">
-                            ${purchase.paidInstallments}/${purchase.installments} parcelas pagas
-                            ${!isComplete ? ` - Faltam ${remaining}x de R$ ${purchase.installmentAmount.toFixed(2)}` : ' - ✅ Quitado'}
-                        </div>
-                        <div class="item-date">${this.formatDate(purchase.date)}</div>
-                    </div>
-                    <div style="display: flex; align-items: center; flex-direction: column; gap: 8px;">
-                        <div class="item-amount">R$ ${purchase.totalAmount.toFixed(2)}</div>
-                        ${!isComplete ? `<button class="btn secondary" style="padding: 6px 12px; font-size: 12px; width: auto;" onclick="manager.payInstallment(${purchase.id})">Pagar Parcela</button>` : ''}
-                        <button class="delete-btn" onclick="manager.deleteCreditPurchase(${purchase.id})">✕</button>
-                    </div>
-                </div>
-            `;
-        }).join('');
     }
 
     renderNotifications() {
