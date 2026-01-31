@@ -23,6 +23,11 @@ function switchTab(tab) {
     if (tab === 'overview') {
         manager.renderCharts();
     }
+
+    // Atualizar lista de categorias quando abrir a aba
+    if (tab === 'categories') {
+        manager.renderCategoryManagement();
+    }
 }
 
 // Notificações do navegador
@@ -42,7 +47,7 @@ function sendNotification(title, body) {
     }
 }
 
-// Verificar contas a vencer (executa a cada hora)
+// Verificar contas a vencer
 function checkDueDates() {
     const expenses = manager.expenses || [];
     const today = new Date();
@@ -70,59 +75,57 @@ function exportPDF() {
     const totals = manager.getMonthlyTotals();
     const breakdown = manager.getCategoryBreakdown();
 
-    // Título
     doc.setFontSize(20);
     doc.text('Relatório Financeiro', 105, 20, { align: 'center' });
 
-    // Data
     doc.setFontSize(10);
     doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 105, 30, { align: 'center' });
+    doc.text(`Período: ${manager.getMonthYearString()}`, 105, 37, { align: 'center' });
 
-    // Resumo
     doc.setFontSize(14);
-    doc.text('Resumo do Mês', 20, 45);
+    doc.text('Resumo do Mês', 20, 50);
 
     doc.setFontSize(11);
-    doc.text(`Receitas: R$ ${totals.income.toFixed(2)}`, 20, 55);
-    doc.text(`Despesas: R$ ${totals.expenses.toFixed(2)}`, 20, 62);
-    doc.text(`Saldo: R$ ${totals.balance.toFixed(2)}`, 20, 69);
+    doc.text(`Receitas: R$ ${totals.income.toFixed(2)}`, 20, 60);
+    doc.text(`Despesas: R$ ${totals.expenses.toFixed(2)}`, 20, 67);
+    doc.text(`Saldo: R$ ${totals.balance.toFixed(2)}`, 20, 74);
 
-    // Tabela de categorias
     if (breakdown.length > 0) {
         const tableData = breakdown.map(item => [
             item.category,
             `R$ ${item.amount.toFixed(2)}`,
-            `${item.percentage.toFixed(1)}%`
+            `${item.percentage.toFixed(1)}%`,
+            `${item.percentOfIncome.toFixed(1)}% da receita`
         ]);
 
         doc.autoTable({
-            startY: 80,
-            head: [['Categoria', 'Valor', 'Percentual']],
+            startY: 85,
+            head: [['Categoria', 'Valor', '% Despesas', '% Receita']],
             body: tableData,
             theme: 'grid',
             headStyles: { fillColor: [99, 102, 241] }
         });
     }
 
-    // Despesas detalhadas
     if (manager.expenses.length > 0) {
-        const expenseData = manager.expenses.slice(0, 20).map(exp => [
+        const expenseData = manager.getFilteredExpenses().slice(0, 20).map(exp => [
             new Date(exp.date).toLocaleDateString('pt-BR'),
             exp.category,
             exp.description || '-',
+            exp.recurring ? 'Sim' : 'Não',
             `R$ ${exp.amount.toFixed(2)}`
         ]);
 
         doc.autoTable({
             startY: doc.lastAutoTable.finalY + 15,
-            head: [['Data', 'Categoria', 'Descrição', 'Valor']],
+            head: [['Data', 'Categoria', 'Descrição', 'Recorrente', 'Valor']],
             body: expenseData,
             theme: 'striped',
             headStyles: { fillColor: [239, 68, 68] }
         });
     }
 
-    doc.save('relatorio-financeiro.pdf');
+    doc.save(`relatorio-${manager.getMonthYearString().replace(' ', '-')}.pdf`);
     showToast('📄 PDF exportado com sucesso!');
 }
 
@@ -130,10 +133,10 @@ function exportPDF() {
 function exportExcel() {
     const wb = XLSX.utils.book_new();
 
-    // Aba: Resumo
     const totals = manager.getMonthlyTotals();
     const summaryData = [
         ['Relatório Financeiro'],
+        ['Período:', manager.getMonthYearString()],
         ['Data:', new Date().toLocaleDateString('pt-BR')],
         [],
         ['Resumo do Mês'],
@@ -144,12 +147,12 @@ function exportExcel() {
     const wsResume = XLSX.utils.aoa_to_sheet(summaryData);
     XLSX.utils.book_append_sheet(wb, wsResume, 'Resumo');
 
-    // Aba: Despesas
     if (manager.expenses.length > 0) {
-        const expenseData = manager.expenses.map(exp => ({
+        const expenseData = manager.getFilteredExpenses().map(exp => ({
             'Data': new Date(exp.date).toLocaleDateString('pt-BR'),
             'Categoria': exp.category,
             'Descrição': exp.description || '-',
+            'Recorrente': exp.recurring ? 'Sim' : 'Não',
             'Valor': exp.amount,
             'Vencimento': exp.dueDate ? new Date(exp.dueDate).toLocaleDateString('pt-BR') : '-'
         }));
@@ -157,19 +160,18 @@ function exportExcel() {
         XLSX.utils.book_append_sheet(wb, wsExpenses, 'Despesas');
     }
 
-    // Aba: Receitas
     if (manager.income.length > 0) {
-        const incomeData = manager.income.map(inc => ({
+        const incomeData = manager.getFilteredIncome().map(inc => ({
             'Data': new Date(inc.date).toLocaleDateString('pt-BR'),
             'Categoria': inc.category,
             'Descrição': inc.description || '-',
+            'Recorrente': inc.recurring ? 'Sim' : 'Não',
             'Valor': inc.amount
         }));
         const wsIncome = XLSX.utils.json_to_sheet(incomeData);
         XLSX.utils.book_append_sheet(wb, wsIncome, 'Receitas');
     }
 
-    // Aba: Cartão de Crédito
     if (manager.creditPurchases && manager.creditPurchases.length > 0) {
         const creditData = manager.creditPurchases.map(purchase => ({
             'Data': new Date(purchase.date).toLocaleDateString('pt-BR'),
@@ -184,19 +186,19 @@ function exportExcel() {
         XLSX.utils.book_append_sheet(wb, wsCredit, 'Cartão de Crédito');
     }
 
-    // Aba: Por Categoria
     const breakdown = manager.getCategoryBreakdown();
     if (breakdown.length > 0) {
         const categoryData = breakdown.map(item => ({
             'Categoria': item.category,
             'Valor': item.amount,
-            'Percentual': item.percentage.toFixed(1) + '%'
+            '% das Despesas': item.percentage.toFixed(1) + '%',
+            '% da Receita': item.percentOfIncome.toFixed(1) + '%'
         }));
         const wsCategory = XLSX.utils.json_to_sheet(categoryData);
         XLSX.utils.book_append_sheet(wb, wsCategory, 'Por Categoria');
     }
 
-    XLSX.writeFile(wb, 'relatorio-financeiro.xlsx');
+    XLSX.writeFile(wb, `relatorio-${manager.getMonthYearString().replace(' ', '-')}.xlsx`);
     showToast('📊 Excel exportado com sucesso!');
 }
 
@@ -216,32 +218,28 @@ function syncWithCode() {
         return;
     }
 
-    // Simular sincronização (em produção, isso seria via servidor)
     const myData = {
         expenses: manager.expenses,
         income: manager.income,
-        creditPurchases: manager.creditPurchases || []
+        creditPurchases: manager.creditPurchases || [],
+        expenseCategories: manager.expenseCategories,
+        incomeCategories: manager.incomeCategories
     };
 
-    // Salvar dados com o código
     localStorage.setItem(`sync_${inputCode}`, JSON.stringify(myData));
 
-    // Tentar carregar dados de outro dispositivo
     const otherData = localStorage.getItem(`sync_${inputCode}`);
     if (otherData) {
         const parsed = JSON.parse(otherData);
 
-        // Mesclar dados
         manager.expenses = [...manager.expenses, ...parsed.expenses];
         manager.income = [...manager.income, ...parsed.income];
         manager.creditPurchases = [...(manager.creditPurchases || []), ...(parsed.creditPurchases || [])];
 
-        // Remover duplicatas por ID
         manager.expenses = Array.from(new Map(manager.expenses.map(item => [item.id, item])).values());
         manager.income = Array.from(new Map(manager.income.map(item => [item.id, item])).values());
         manager.creditPurchases = Array.from(new Map((manager.creditPurchases || []).map(item => [item.id, item])).values());
 
-        // Salvar
         manager.saveData('expenses', manager.expenses);
         manager.saveData('income', manager.income);
         manager.saveData('creditPurchases', manager.creditPurchases);
@@ -262,23 +260,49 @@ class FinanceManager {
         this.expenseFilter = 'all';
         this.incomeFilter = 'all';
         this.charts = {};
+
+        // Mês e ano selecionados
+        this.selectedMonth = new Date().getMonth();
+        this.selectedYear = new Date().getFullYear();
+
+        // Categorias padrão
+        this.defaultExpenseCategories = [
+            '🍔 Alimentação', '🚗 Transporte', '🎮 Lazer', '💊 Saúde',
+            '📚 Educação', '🏠 Moradia', '👕 Vestuário', '🧾 Contas',
+            '🪐 Saturno', '📦 Outros'
+        ];
+
+        this.defaultIncomeCategories = [
+            '💼 Salário', '💻 Freelance', '📈 Investimentos', '💵 Outros'
+        ];
+
+        // Carregar categorias personalizadas
+        this.expenseCategories = this.loadData('expenseCategories') || [...this.defaultExpenseCategories];
+        this.incomeCategories = this.loadData('incomeCategories') || [...this.defaultIncomeCategories];
+
         this.init();
     }
 
     init() {
         this.setupEventListeners();
+        this.processRecurringItems();
+        this.populateCategorySelects();
+        this.updateMonthDisplay();
         this.render();
         requestNotificationPermission();
 
-        // Verificar contas a vencer a cada hora
         setInterval(() => checkDueDates(), 60 * 60 * 1000);
-        checkDueDates(); // Verificar imediatamente
+        checkDueDates();
 
-        // Carregar código de sync se existir
         const savedCode = localStorage.getItem('syncCode');
         if (savedCode) {
             document.getElementById('syncCode').textContent = savedCode;
         }
+
+        // Definir data de hoje nos campos de data
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('expenseDate').value = today;
+        document.getElementById('incomeDate').value = today;
     }
 
     setupEventListeners() {
@@ -298,24 +322,251 @@ class FinanceManager {
         });
     }
 
+    changeMonth(direction) {
+        this.selectedMonth += direction;
+
+        if (this.selectedMonth > 11) {
+            this.selectedMonth = 0;
+            this.selectedYear++;
+        } else if (this.selectedMonth < 0) {
+            this.selectedMonth = 11;
+            this.selectedYear--;
+        }
+
+        this.updateMonthDisplay();
+        this.render();
+    }
+
+    updateMonthDisplay() {
+        const months = [
+            'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+            'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+        ];
+
+        document.getElementById('monthDisplay').textContent = 
+            `${months[this.selectedMonth]} ${this.selectedYear}`;
+    }
+
+    getMonthYearString() {
+        const months = [
+            'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+            'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+        ];
+        return `${months[this.selectedMonth]} ${this.selectedYear}`;
+    }
+
+    processRecurringItems() {
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+
+        // Processar despesas recorrentes
+        this.expenses.forEach(expense => {
+            if (expense.recurring && expense.originalDate) {
+                const expenseDate = new Date(expense.originalDate);
+                const expenseMonth = expenseDate.getMonth();
+                const expenseYear = expenseDate.getFullYear();
+
+                // Se a despesa recorrente é de um mês anterior, criar cópia para o mês atual
+                if (expenseYear < currentYear || (expenseYear === currentYear && expenseMonth < currentMonth)) {
+                    const existsInCurrentMonth = this.expenses.some(e => 
+                        e.recurringParentId === expense.id &&
+                        new Date(e.date).getMonth() === currentMonth &&
+                        new Date(e.date).getFullYear() === currentYear
+                    );
+
+                    if (!existsInCurrentMonth) {
+                        const newDate = new Date(currentYear, currentMonth, expenseDate.getDate());
+                        this.expenses.push({
+                            id: Date.now() + Math.random(),
+                            amount: expense.amount,
+                            category: expense.category,
+                            description: expense.description,
+                            dueDate: expense.dueDate ? new Date(currentYear, currentMonth, new Date(expense.dueDate).getDate()).toISOString().split('T')[0] : null,
+                            date: newDate.toISOString(),
+                            recurring: true,
+                            recurringParentId: expense.id
+                        });
+                    }
+                }
+            }
+        });
+
+        // Processar receitas recorrentes
+        this.income.forEach(income => {
+            if (income.recurring && income.originalDate) {
+                const incomeDate = new Date(income.originalDate);
+                const incomeMonth = incomeDate.getMonth();
+                const incomeYear = incomeDate.getFullYear();
+
+                if (incomeYear < currentYear || (incomeYear === currentYear && incomeMonth < currentMonth)) {
+                    const existsInCurrentMonth = this.income.some(i => 
+                        i.recurringParentId === income.id &&
+                        new Date(i.date).getMonth() === currentMonth &&
+                        new Date(i.date).getFullYear() === currentYear
+                    );
+
+                    if (!existsInCurrentMonth) {
+                        const newDate = new Date(currentYear, currentMonth, incomeDate.getDate());
+                        this.income.push({
+                            id: Date.now() + Math.random(),
+                            amount: income.amount,
+                            category: income.category,
+                            description: income.description,
+                            date: newDate.toISOString(),
+                            recurring: true,
+                            recurringParentId: income.id
+                        });
+                    }
+                }
+            }
+        });
+
+        this.saveData('expenses', this.expenses);
+        this.saveData('income', this.income);
+    }
+
+    populateCategorySelects() {
+        const expenseSelect = document.getElementById('expenseCategory');
+        const incomeSelect = document.getElementById('incomeCategory');
+        const creditSelect = document.getElementById('creditCategory');
+
+        expenseSelect.innerHTML = '<option value="">Selecione...</option>' +
+            this.expenseCategories.map(cat => `<option value="${cat}">${cat}</option>`).join('');
+
+        incomeSelect.innerHTML = '<option value="">Selecione...</option>' +
+            this.incomeCategories.map(cat => `<option value="${cat}">${cat}</option>`).join('');
+
+        creditSelect.innerHTML = '<option value="">Selecione...</option>' +
+            this.expenseCategories.map(cat => `<option value="${cat}">${cat}</option>`).join('');
+    }
+
+    addExpenseCategory() {
+        const input = document.getElementById('newExpenseCategory');
+        const category = input.value.trim();
+
+        if (!category) {
+            showToast('⚠️ Digite um nome para a categoria');
+            return;
+        }
+
+        if (this.expenseCategories.includes(category)) {
+            showToast('⚠️ Categoria já existe');
+            return;
+        }
+
+        this.expenseCategories.push(category);
+        this.saveData('expenseCategories', this.expenseCategories);
+        this.populateCategorySelects();
+        this.renderCategoryManagement();
+        input.value = '';
+        showToast('✅ Categoria adicionada!');
+    }
+
+    removeExpenseCategory(category) {
+        if (this.defaultExpenseCategories.includes(category)) {
+            showToast('⚠️ Não é possível remover categorias padrão');
+            return;
+        }
+
+        if (confirm(`Remover a categoria "${category}"?`)) {
+            this.expenseCategories = this.expenseCategories.filter(c => c !== category);
+            this.saveData('expenseCategories', this.expenseCategories);
+            this.populateCategorySelects();
+            this.renderCategoryManagement();
+            showToast('🗑️ Categoria removida!');
+        }
+    }
+
+    addIncomeCategory() {
+        const input = document.getElementById('newIncomeCategory');
+        const category = input.value.trim();
+
+        if (!category) {
+            showToast('⚠️ Digite um nome para a categoria');
+            return;
+        }
+
+        if (this.incomeCategories.includes(category)) {
+            showToast('⚠️ Categoria já existe');
+            return;
+        }
+
+        this.incomeCategories.push(category);
+        this.saveData('incomeCategories', this.incomeCategories);
+        this.populateCategorySelects();
+        this.renderCategoryManagement();
+        input.value = '';
+        showToast('✅ Categoria adicionada!');
+    }
+
+    removeIncomeCategory(category) {
+        if (this.defaultIncomeCategories.includes(category)) {
+            showToast('⚠️ Não é possível remover categorias padrão');
+            return;
+        }
+
+        if (confirm(`Remover a categoria "${category}"?`)) {
+            this.incomeCategories = this.incomeCategories.filter(c => c !== category);
+            this.saveData('incomeCategories', this.incomeCategories);
+            this.populateCategorySelects();
+            this.renderCategoryManagement();
+            showToast('🗑️ Categoria removida!');
+        }
+    }
+
+    renderCategoryManagement() {
+        const expenseList = document.getElementById('expenseCategoriesList');
+        const incomeList = document.getElementById('incomeCategoriesList');
+
+        expenseList.innerHTML = this.expenseCategories.map(cat => {
+            const isDefault = this.defaultExpenseCategories.includes(cat);
+            return `
+                <div class="category-tag">
+                    ${cat}
+                    ${!isDefault ? `<button onclick="manager.removeExpenseCategory('${cat}')">✕</button>` : ''}
+                </div>
+            `;
+        }).join('');
+
+        incomeList.innerHTML = this.incomeCategories.map(cat => {
+            const isDefault = this.defaultIncomeCategories.includes(cat);
+            return `
+                <div class="category-tag">
+                    ${cat}
+                    ${!isDefault ? `<button onclick="manager.removeIncomeCategory('${cat}')">✕</button>` : ''}
+                </div>
+            `;
+        }).join('');
+    }
+
     addExpense() {
         const amount = parseFloat(document.getElementById('expenseAmount').value);
         const category = document.getElementById('expenseCategory').value;
         const description = document.getElementById('expenseDescription').value;
+        const date = document.getElementById('expenseDate').value;
         const dueDate = document.getElementById('expenseDueDate').value;
+        const recurring = document.getElementById('expenseRecurring').checked;
 
-        this.expenses.unshift({
+        const expense = {
             id: Date.now(),
             amount,
             category,
             description,
             dueDate: dueDate || null,
-            date: new Date().toISOString()
-        });
+            date: new Date(date).toISOString(),
+            recurring
+        };
 
+        if (recurring) {
+            expense.originalDate = expense.date;
+        }
+
+        this.expenses.unshift(expense);
         this.saveData('expenses', this.expenses);
         this.render();
         document.getElementById('expenseForm').reset();
+        document.getElementById('expenseDate').value = new Date().toISOString().split('T')[0];
         showToast('✅ Despesa adicionada!');
     }
 
@@ -323,18 +574,27 @@ class FinanceManager {
         const amount = parseFloat(document.getElementById('incomeAmount').value);
         const category = document.getElementById('incomeCategory').value;
         const description = document.getElementById('incomeDescription').value;
+        const date = document.getElementById('incomeDate').value;
+        const recurring = document.getElementById('incomeRecurring').checked;
 
-        this.income.unshift({
+        const income = {
             id: Date.now(),
             amount,
             category,
             description,
-            date: new Date().toISOString()
-        });
+            date: new Date(date).toISOString(),
+            recurring
+        };
 
+        if (recurring) {
+            income.originalDate = income.date;
+        }
+
+        this.income.unshift(income);
         this.saveData('income', this.income);
         this.render();
         document.getElementById('incomeForm').reset();
+        document.getElementById('incomeDate').value = new Date().toISOString().split('T')[0];
         showToast('✅ Receita adicionada!');
     }
 
@@ -400,36 +660,54 @@ class FinanceManager {
         }
     }
 
-    filterItems(items, filter) {
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    getFilteredExpenses() {
+        return this.expenses.filter(expense => {
+            const expenseDate = new Date(expense.date);
+            const isInSelectedMonth = 
+                expenseDate.getMonth() === this.selectedMonth &&
+                expenseDate.getFullYear() === this.selectedYear;
 
-        return items.filter(item => {
-            const itemDate = new Date(item.date);
-            switch(filter) {
-                case 'today': return itemDate >= today;
-                case 'week': return itemDate >= weekAgo;
-                case 'month': return itemDate >= monthStart;
-                default: return true;
-            }
+            if (!isInSelectedMonth) return false;
+
+            if (this.expenseFilter === 'recurring') return expense.recurring;
+            if (this.expenseFilter === 'oneTime') return !expense.recurring;
+            return true;
+        });
+    }
+
+    getFilteredIncome() {
+        return this.income.filter(income => {
+            const incomeDate = new Date(income.date);
+            const isInSelectedMonth = 
+                incomeDate.getMonth() === this.selectedMonth &&
+                incomeDate.getFullYear() === this.selectedYear;
+
+            if (!isInSelectedMonth) return false;
+
+            if (this.incomeFilter === 'recurring') return income.recurring;
+            if (this.incomeFilter === 'oneTime') return !income.recurring;
+            return true;
         });
     }
 
     getMonthlyTotals() {
-        const now = new Date();
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const monthStart = new Date(this.selectedYear, this.selectedMonth, 1);
+        const monthEnd = new Date(this.selectedYear, this.selectedMonth + 1, 0);
 
         const monthlyExpenses = this.expenses
-            .filter(e => new Date(e.date) >= monthStart)
+            .filter(e => {
+                const eDate = new Date(e.date);
+                return eDate >= monthStart && eDate <= monthEnd;
+            })
             .reduce((sum, e) => sum + e.amount, 0);
 
         const monthlyIncome = this.income
-            .filter(i => new Date(i.date) >= monthStart)
+            .filter(i => {
+                const iDate = new Date(i.date);
+                return iDate >= monthStart && iDate <= monthEnd;
+            })
             .reduce((sum, i) => sum + i.amount, 0);
 
-        // Adicionar parcelas do cartão do mês atual
         const creditExpenses = this.creditPurchases
             .filter(c => c.paidInstallments < c.installments)
             .reduce((sum, c) => sum + c.installmentAmount, 0);
@@ -442,11 +720,16 @@ class FinanceManager {
     }
 
     getCategoryBreakdown() {
-        const now = new Date();
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const monthStart = new Date(this.selectedYear, this.selectedMonth, 1);
+        const monthEnd = new Date(this.selectedYear, this.selectedMonth + 1, 0);
 
-        const monthlyExpenses = this.expenses.filter(e => new Date(e.date) >= monthStart);
+        const monthlyExpenses = this.expenses.filter(e => {
+            const eDate = new Date(e.date);
+            return eDate >= monthStart && eDate <= monthEnd;
+        });
+
         const total = monthlyExpenses.reduce((sum, e) => sum + e.amount, 0);
+        const totals = this.getMonthlyTotals();
 
         const breakdown = {};
         monthlyExpenses.forEach(expense => {
@@ -457,7 +740,8 @@ class FinanceManager {
             .map(([category, amount]) => ({
                 category,
                 amount,
-                percentage: total > 0 ? (amount / total * 100) : 0
+                percentage: total > 0 ? (amount / total * 100) : 0,
+                percentOfIncome: totals.income > 0 ? (amount / totals.income * 100) : 0
             }))
             .sort((a, b) => b.amount - a.amount);
     }
@@ -478,7 +762,8 @@ class FinanceManager {
                         data: breakdown.map(b => b.amount),
                         backgroundColor: [
                             '#ef4444', '#f59e0b', '#10b981', '#3b82f6',
-                            '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'
+                            '#8b5cf6', '#ec4899', '#14b8a6', '#f97316',
+                            '#06b6d4', '#84cc16'
                         ]
                     }]
                 },
@@ -494,18 +779,16 @@ class FinanceManager {
             });
         }
 
-        // Gráfico de Barras - Evolução
+        // Gráfico de Barras - Evolução (últimos 6 meses)
         const ctxEvolution = document.getElementById('evolutionChart');
         if (this.charts.evolution) this.charts.evolution.destroy();
 
-        // Últimos 6 meses
         const months = [];
         const expensesByMonth = [];
         const incomeByMonth = [];
 
         for (let i = 5; i >= 0; i--) {
-            const date = new Date();
-            date.setMonth(date.getMonth() - i);
+            const date = new Date(this.selectedYear, this.selectedMonth - i, 1);
             const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
             const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0);
 
@@ -568,6 +851,7 @@ class FinanceManager {
 
     renderOverview() {
         const totals = this.getMonthlyTotals();
+        const breakdown = this.getCategoryBreakdown();
 
         document.getElementById('summaryIncome').textContent = `R$ ${this.formatShort(totals.income)}`;
         document.getElementById('summaryExpense').textContent = `R$ ${this.formatShort(totals.expenses)}`;
@@ -579,6 +863,27 @@ class FinanceManager {
         if (totals.balance > 0) balanceEl.classList.add('positive');
         if (totals.balance < 0) balanceEl.classList.add('negative');
 
+        // Percentual sobre receita
+        const percentageEl = document.getElementById('percentageBreakdown');
+        if (breakdown.length === 0 || totals.income === 0) {
+            percentageEl.innerHTML = '<div class="empty-state"><div class="empty-icon">💰</div>Adicione receitas para ver percentuais</div>';
+        } else {
+            percentageEl.innerHTML = breakdown.map(item => `
+                <div class="category-item">
+                    <div class="category-header">
+                        <div class="category-name">${item.category}</div>
+                        <div class="category-stats">
+                            <div class="category-amount">R$ ${item.amount.toFixed(2)}</div>
+                            <div class="category-percentage">${item.percentOfIncome.toFixed(1)}% da receita</div>
+                        </div>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${Math.min(item.percentOfIncome, 100)}%"></div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
         this.renderCharts();
     }
 
@@ -586,11 +891,11 @@ class FinanceManager {
         const totals = this.getMonthlyTotals();
         document.getElementById('totalExpenses').textContent = `R$ ${totals.expenses.toFixed(2)}`;
 
-        const filtered = this.filterItems(this.expenses, this.expenseFilter);
+        const filtered = this.getFilteredExpenses();
         const list = document.getElementById('expensesList');
 
         if (filtered.length === 0) {
-            list.innerHTML = '<div class="empty-state"><div class="empty-icon">💸</div>Nenhuma despesa</div>';
+            list.innerHTML = '<div class="empty-state"><div class="empty-icon">💸</div>Nenhuma despesa neste período</div>';
             return;
         }
 
@@ -598,6 +903,7 @@ class FinanceManager {
             <div class="item">
                 <div class="item-info">
                     <span class="item-category">${expense.category}</span>
+                    ${expense.recurring ? '<span class="recurring-badge">🔄 Recorrente</span>' : ''}
                     <div class="item-description">${expense.description || 'Sem descrição'}</div>
                     <div class="item-date">${this.formatDate(expense.date)}</div>
                     ${expense.dueDate ? `<div class="item-date">Vence: ${new Date(expense.dueDate).toLocaleDateString('pt-BR')}</div>` : ''}
@@ -614,11 +920,11 @@ class FinanceManager {
         const totals = this.getMonthlyTotals();
         document.getElementById('totalIncome').textContent = `R$ ${totals.income.toFixed(2)}`;
 
-        const filtered = this.filterItems(this.income, this.incomeFilter);
+        const filtered = this.getFilteredIncome();
         const list = document.getElementById('incomeList');
 
         if (filtered.length === 0) {
-            list.innerHTML = '<div class="empty-state"><div class="empty-icon">💰</div>Nenhuma receita</div>';
+            list.innerHTML = '<div class="empty-state"><div class="empty-icon">💰</div>Nenhuma receita neste período</div>';
             return;
         }
 
@@ -626,6 +932,7 @@ class FinanceManager {
             <div class="item">
                 <div class="item-info">
                     <span class="item-category income">${income.category}</span>
+                    ${income.recurring ? '<span class="recurring-badge">🔄 Recorrente</span>' : ''}
                     <div class="item-description">${income.description || 'Sem descrição'}</div>
                     <div class="item-date">${this.formatDate(income.date)}</div>
                 </div>
@@ -678,7 +985,6 @@ class FinanceManager {
 
     renderNotifications() {
         const today = new Date();
-        const threeDaysFromNow = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
         const sevenDaysFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
 
         const dueSoon = this.expenses.filter(expense => {
@@ -715,17 +1021,7 @@ class FinanceManager {
 
     formatDate(dateString) {
         const date = new Date(dateString);
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-
-        if (date >= today) {
-            return `Hoje ${date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
-        } else if (date >= yesterday) {
-            return `Ontem ${date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
-        } else {
-            return date.toLocaleDateString('pt-BR');
-        }
+        return date.toLocaleDateString('pt-BR');
     }
 
     formatShort(value) {
@@ -735,7 +1031,7 @@ class FinanceManager {
 
     loadData(key) {
         const data = localStorage.getItem(key);
-        return data ? JSON.parse(data) : [];
+        return data ? JSON.parse(data) : null;
     }
 
     saveData(key, data) {
@@ -747,16 +1043,20 @@ const manager = new FinanceManager();
 
 function filterExpenses(filter) {
     document.querySelectorAll('#expenses-tab .filter-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.textContent.toLowerCase().includes(filter === 'all' ? 'todos' : filter));
+        btn.classList.remove('active');
     });
+    event.target.classList.add('active');
+
     manager.expenseFilter = filter;
     manager.renderExpenses();
 }
 
 function filterIncome(filter) {
     document.querySelectorAll('#income-tab .filter-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.textContent.toLowerCase().includes(filter === 'all' ? 'todos' : filter));
+        btn.classList.remove('active');
     });
+    event.target.classList.add('active');
+
     manager.incomeFilter = filter;
     manager.renderIncome();
 }
