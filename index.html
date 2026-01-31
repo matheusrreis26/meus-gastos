@@ -11,11 +11,20 @@
     <meta name="description" content="Controle suas finanças de forma simples e prática">
 
     <link rel="manifest" href="/manifest.json">
-    <link rel="icon" href="/manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
     <link rel="apple-touch-icon" href="icon-192.png">
 
     <title>Meus Gastos</title>
+
+    <!-- Chart.js para gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+    <!-- jsPDF para exportar PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+
+    <!-- SheetJS para exportar Excel -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 
     <style>
         * {
@@ -60,25 +69,32 @@
 
         .tabs {
             display: flex;
-            gap: 8px;
+            gap: 6px;
             margin-bottom: 20px;
             background: rgba(255,255,255,0.15);
             padding: 6px;
             border-radius: 12px;
             backdrop-filter: blur(10px);
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .tabs::-webkit-scrollbar {
+            display: none;
         }
 
         .tab-btn {
-            flex: 1;
-            padding: 12px 8px;
+            flex-shrink: 0;
+            padding: 10px 14px;
             background: transparent;
             color: rgba(255,255,255,0.7);
             border: none;
             border-radius: 8px;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s;
+            white-space: nowrap;
         }
 
         .tab-btn.active {
@@ -114,41 +130,6 @@
 
         .balance-amount.negative {
             color: #ef4444;
-        }
-
-        .stats {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-bottom: 16px;
-        }
-
-        .stat-card {
-            background: white;
-            border-radius: 16px;
-            padding: 18px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-        }
-
-        .stat-label {
-            color: #666;
-            font-size: 11px;
-            margin-bottom: 6px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .stat-value {
-            font-size: 22px;
-            font-weight: 700;
-        }
-
-        .stat-value.expense {
-            color: #ef4444;
-        }
-
-        .stat-value.income {
-            color: #10b981;
         }
 
         .form-card {
@@ -224,6 +205,20 @@
             box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
         }
 
+        .btn.secondary {
+            background: #f3f4f6;
+            color: #1f2937;
+            box-shadow: none;
+            margin-top: 8px;
+        }
+
+        .btn-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
         .list-card {
             background: white;
             border-radius: 20px;
@@ -265,6 +260,11 @@
             color: #10b981;
         }
 
+        .item-category.credit {
+            background: #fef3c7;
+            color: #f59e0b;
+        }
+
         .item-description {
             font-size: 14px;
             color: #1f2937;
@@ -275,6 +275,13 @@
         .item-date {
             font-size: 11px;
             color: #9ca3af;
+        }
+
+        .item-installment {
+            font-size: 11px;
+            color: #f59e0b;
+            font-weight: 600;
+            margin-top: 2px;
         }
 
         .item-amount {
@@ -345,78 +352,6 @@
             color: white;
         }
 
-        .category-item {
-            padding: 14px 0;
-            border-bottom: 1px solid #f3f4f6;
-        }
-
-        .category-item:last-child {
-            border-bottom: none;
-        }
-
-        .category-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-
-        .category-name {
-            font-size: 14px;
-            color: #1f2937;
-            font-weight: 600;
-        }
-
-        .category-stats {
-            text-align: right;
-        }
-
-        .category-amount {
-            font-size: 16px;
-            font-weight: 700;
-            color: #ef4444;
-        }
-
-        .category-percentage {
-            font-size: 11px;
-            color: #6b7280;
-            font-weight: 600;
-        }
-
-        .progress-bar {
-            width: 100%;
-            height: 6px;
-            background: #f3f4f6;
-            border-radius: 10px;
-            overflow: hidden;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-            transition: width 0.5s ease;
-        }
-
-        .tab-content {
-            display: none;
-        }
-
-        .tab-content.active {
-            display: block;
-            animation: fadeIn 0.3s ease;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
         .summary-grid {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
@@ -457,6 +392,45 @@
             color: #6366f1;
         }
 
+        .chart-container {
+            position: relative;
+            height: 250px;
+            margin: 20px 0;
+        }
+
+        .notification-card {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 16px;
+            border-radius: 12px;
+            margin-bottom: 12px;
+        }
+
+        .notification-card.urgent {
+            background: #fee2e2;
+            border-left-color: #ef4444;
+        }
+
+        .notification-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #92400e;
+            margin-bottom: 4px;
+        }
+
+        .notification-card.urgent .notification-title {
+            color: #991b1b;
+        }
+
+        .notification-text {
+            font-size: 13px;
+            color: #78350f;
+        }
+
+        .notification-card.urgent .notification-text {
+            color: #7f1d1d;
+        }
+
         .toast {
             position: fixed;
             bottom: 90px;
@@ -479,12 +453,56 @@
             transform: translateX(-50%) translateY(0);
         }
 
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .sync-section {
+            background: #e0e7ff;
+            padding: 16px;
+            border-radius: 12px;
+            margin-bottom: 16px;
+        }
+
+        .sync-code {
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 18px;
+            font-weight: 700;
+            text-align: center;
+            letter-spacing: 2px;
+            margin: 12px 0;
+            color: #6366f1;
+        }
+
         @media (max-width: 360px) {
             .header h1 {
                 font-size: 22px;
             }
             .balance-amount {
                 font-size: 28px;
+            }
+            .tab-btn {
+                font-size: 11px;
+                padding: 8px 10px;
             }
         }
     </style>
@@ -502,6 +520,10 @@
             <button class="tab-btn active" onclick="switchTab('overview')">📊 Visão</button>
             <button class="tab-btn" onclick="switchTab('expenses')">💸 Despesas</button>
             <button class="tab-btn" onclick="switchTab('income')">💰 Receitas</button>
+            <button class="tab-btn" onclick="switchTab('credit')">💳 Cartão</button>
+            <button class="tab-btn" onclick="switchTab('notifications')">🔔 Alertas</button>
+            <button class="tab-btn" onclick="switchTab('export')">📤 Exportar</button>
+            <button class="tab-btn" onclick="switchTab('sync')">🔄 Sync</button>
         </div>
 
         <!-- TAB: VISÃO GERAL -->
@@ -527,13 +549,17 @@
             </div>
 
             <div class="list-card">
-                <div class="form-title">📈 Despesas por Categoria</div>
-                <div id="categoryBreakdown"></div>
+                <div class="form-title">📊 Despesas por Categoria</div>
+                <div class="chart-container">
+                    <canvas id="categoryChart"></canvas>
+                </div>
             </div>
 
             <div class="list-card">
-                <div class="form-title">💳 % Sobre Receita</div>
-                <div id="percentageBreakdown"></div>
+                <div class="form-title">📈 Evolução Mensal</div>
+                <div class="chart-container">
+                    <canvas id="evolutionChart"></canvas>
+                </div>
             </div>
         </div>
 
@@ -566,6 +592,10 @@
                             <option value="Saturno">🪐 Saturno</option>
                             <option value="Outros">📦 Outros</option>
                         </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="expenseDueDate">Data de Vencimento (opcional)</label>
+                        <input type="date" id="expenseDueDate">
                     </div>
                     <div class="form-group">
                         <label for="expenseDescription">Descrição (opcional)</label>
@@ -628,6 +658,126 @@
                     <button class="filter-btn" onclick="filterIncome('month')">Mês</button>
                 </div>
                 <div id="incomeList"></div>
+            </div>
+        </div>
+
+        <!-- TAB: CARTÃO DE CRÉDITO -->
+        <div id="credit-tab" class="tab-content">
+            <div class="balance-card">
+                <div class="balance-label">Fatura Atual</div>
+                <div class="balance-amount" style="color: #f59e0b;" id="totalCredit">R$ 0,00</div>
+            </div>
+
+            <div class="form-card">
+                <div class="form-title">➕ Nova Compra no Cartão</div>
+                <form id="creditForm">
+                    <div class="form-group">
+                        <label for="creditAmount">Valor Total (R$)</label>
+                        <input type="number" id="creditAmount" step="0.01" required placeholder="0,00" inputmode="decimal">
+                    </div>
+                    <div class="form-group">
+                        <label for="creditInstallments">Número de Parcelas</label>
+                        <select id="creditInstallments" required>
+                            <option value="1">À vista</option>
+                            <option value="2">2x</option>
+                            <option value="3">3x</option>
+                            <option value="4">4x</option>
+                            <option value="5">5x</option>
+                            <option value="6">6x</option>
+                            <option value="7">7x</option>
+                            <option value="8">8x</option>
+                            <option value="9">9x</option>
+                            <option value="10">10x</option>
+                            <option value="11">11x</option>
+                            <option value="12">12x</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="creditCategory">Categoria</label>
+                        <select id="creditCategory" required>
+                            <option value="">Selecione...</option>
+                            <option value="Alimentação">🍔 Alimentação</option>
+                            <option value="Transporte">🚗 Transporte</option>
+                            <option value="Lazer">🎮 Lazer</option>
+                            <option value="Saúde">💊 Saúde</option>
+                            <option value="Educação">📚 Educação</option>
+                            <option value="Moradia">🏠 Moradia</option>
+                            <option value="Vestuário">👕 Vestuário</option>
+                            <option value="Eletrônicos">📱 Eletrônicos</option>
+                            <option value="Outros">📦 Outros</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="creditDescription">Descrição</label>
+                        <textarea id="creditDescription" required placeholder="Ex: Notebook Dell"></textarea>
+                    </div>
+                    <button type="submit" class="btn">Adicionar ao Cartão</button>
+                </form>
+            </div>
+
+            <div class="list-card">
+                <div class="form-title">💳 Compras Parceladas</div>
+                <div id="creditList"></div>
+            </div>
+        </div>
+
+        <!-- TAB: NOTIFICAÇÕES -->
+        <div id="notifications-tab" class="tab-content">
+            <div class="list-card">
+                <div class="form-title">🔔 Contas a Vencer</div>
+                <div id="notificationsList"></div>
+            </div>
+        </div>
+
+        <!-- TAB: EXPORTAR -->
+        <div id="export-tab" class="tab-content">
+            <div class="form-card">
+                <div class="form-title">📤 Exportar Dados</div>
+                <p style="color: #6b7280; font-size: 14px; margin-bottom: 20px;">
+                    Exporte seus dados financeiros para análise externa ou backup.
+                </p>
+                <div class="btn-group">
+                    <button class="btn secondary" onclick="exportPDF()">📄 Exportar PDF</button>
+                    <button class="btn secondary" onclick="exportExcel()">📊 Exportar Excel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: SINCRONIZAÇÃO -->
+        <div id="sync-tab" class="tab-content">
+            <div class="form-card">
+                <div class="form-title">🔄 Sincronização entre Dispositivos</div>
+                <p style="color: #6b7280; font-size: 14px; margin-bottom: 16px;">
+                    Compartilhe seus dados com outro dispositivo ou pessoa (ex: casal).
+                </p>
+
+                <div class="sync-section">
+                    <h3 style="font-size: 14px; font-weight: 700; margin-bottom: 8px; color: #1f2937;">
+                        📱 Seu Código de Sincronização
+                    </h3>
+                    <div class="sync-code" id="syncCode">------</div>
+                    <button class="btn secondary" onclick="generateSyncCode()">Gerar Novo Código</button>
+                </div>
+
+                <div style="margin: 24px 0; text-align: center; color: #9ca3af; font-weight: 600;">
+                    OU
+                </div>
+
+                <div class="form-group">
+                    <label for="syncCodeInput">Digite o código de outro dispositivo</label>
+                    <input type="text" id="syncCodeInput" placeholder="Ex: ABC123" maxlength="6" style="text-transform: uppercase;">
+                </div>
+                <button class="btn" onclick="syncWithCode()">🔗 Conectar Dispositivos</button>
+
+                <div style="margin-top: 20px; padding: 16px; background: #fef3c7; border-radius: 12px;">
+                    <p style="font-size: 12px; color: #92400e; line-height: 1.6;">
+                        ⚠️ <strong>Como funciona:</strong><br>
+                        1. Gere um código neste dispositivo<br>
+                        2. Digite o mesmo código no outro dispositivo<br>
+                        3. Os dados serão mesclados automaticamente<br>
+                        4. Ambos verão as mesmas informações
+                    </p>
+                </div>
             </div>
         </div>
     </div>
