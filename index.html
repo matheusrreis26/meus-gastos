@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#6366f1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Meus Gastos">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="description" content="Controle suas finanças de forma simples e prática">
+
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/manifest.json">
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+    <link rel="apple-touch-icon" href="icon-192.png">
+
+    <title>Meus Gastos</title>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 16px;
+            padding-bottom: 80px;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 24px;
+            padding-top: 8px;
+        }
+
+        .header h1 {
+            font-size: 26px;
+            margin-bottom: 4px;
+            font-weight: 700;
+        }
+
+        .header p {
+            font-size: 13px;
+            opacity: 0.9;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            background: rgba(255,255,255,0.15);
+            padding: 6px;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 12px 8px;
+            background: transparent;
+            color: rgba(255,255,255,0.7);
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .tab-btn.active {
+            background: white;
+            color: #6366f1;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .balance-card {
+            background: white;
+            border-radius: 20px;
+            padding: 24px;
+            margin-bottom: 16px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        }
+
+        .balance-label {
+            color: #666;
+            font-size: 13px;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        .balance-amount {
+            font-size: 32px;
+            font-weight: 800;
+            color: #6366f1;
+        }
+
+        .balance-amount.positive {
+            color: #10b981;
+        }
+
+        .balance-amount.negative {
+            color: #ef4444;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 16px;
+            padding: 18px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 11px;
+            margin-bottom: 6px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .stat-value {
+            font-size: 22px;
+            font-weight: 700;
+        }
+
+        .stat-value.expense {
+            color: #ef4444;
+        }
+
+        .stat-value.income {
+            color: #10b981;
+        }
+
+        .form-card {
+            background: white;
+            border-radius: 20px;
+            padding: 24px;
+            margin-bottom: 16px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        }
+
+        .form-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: #1f2937;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            color: #4b5563;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 14px;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            font-size: 16px;
+            transition: all 0.3s;
+            background: #f9fafb;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #6366f1;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+            font-family: inherit;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn.income-btn {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+        }
+
+        .list-card {
+            background: white;
+            border-radius: 20px;
+            padding: 24px;
+            margin-bottom: 16px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        }
+
+        .item {
+            padding: 16px;
+            border-bottom: 1px solid #f3f4f6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .item:last-child {
+            border-bottom: none;
+        }
+
+        .item-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .item-category {
+            display: inline-block;
+            padding: 4px 10px;
+            background: #e0e7ff;
+            color: #6366f1;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+
+        .item-category.income {
+            background: #d1fae5;
+            color: #10b981;
+        }
+
+        .item-description {
+            font-size: 14px;
+            color: #1f2937;
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+
+        .item-date {
+            font-size: 11px;
+            color: #9ca3af;
+        }
+
+        .item-amount {
+            font-size: 18px;
+            font-weight: 700;
+            color: #ef4444;
+            margin-left: 12px;
+        }
+
+        .item-amount.income {
+            color: #10b981;
+        }
+
+        .delete-btn {
+            background: #fee2e2;
+            color: #ef4444;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-left: 8px;
+            font-weight: 700;
+        }
+
+        .delete-btn:active {
+            background: #fecaca;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 48px 20px;
+            color: #9ca3af;
+        }
+
+        .empty-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+            opacity: 0.5;
+        }
+
+        .filter-buttons {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            margin-bottom: 16px;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .filter-buttons::-webkit-scrollbar {
+            display: none;
+        }
+
+        .filter-btn {
+            padding: 10px 18px;
+            background: #f3f4f6;
+            border: none;
+            border-radius: 20px;
+            font-size: 13px;
+            cursor: pointer;
+            white-space: nowrap;
+            font-weight: 600;
+            color: #6b7280;
+        }
+
+        .filter-btn.active {
+            background: #6366f1;
+            color: white;
+        }
+
+        .category-item {
+            padding: 14px 0;
+            border-bottom: 1px solid #f3f4f6;
+        }
+
+        .category-item:last-child {
+            border-bottom: none;
+        }
+
+        .category-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .category-name {
+            font-size: 14px;
+            color: #1f2937;
+            font-weight: 600;
+        }
+
+        .category-stats {
+            text-align: right;
+        }
+
+        .category-amount {
+            font-size: 16px;
+            font-weight: 700;
+            color: #ef4444;
+        }
+
+        .category-percentage {
+            font-size: 11px;
+            color: #6b7280;
+            font-weight: 600;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #f3f4f6;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.5s ease;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .summary-card {
+            background: white;
+            border-radius: 16px;
+            padding: 16px 12px;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+
+        .summary-label {
+            font-size: 10px;
+            color: #6b7280;
+            margin-bottom: 6px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .summary-value {
+            font-size: 16px;
+            font-weight: 800;
+        }
+
+        .summary-value.income {
+            color: #10b981;
+        }
+
+        .summary-value.expense {
+            color: #ef4444;
+        }
+
+        .summary-value.balance {
+            color: #6366f1;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 90px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #1f2937;
+            color: white;
+            padding: 14px 24px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            z-index: 1000;
+            opacity: 0;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        @media (max-width: 360px) {
+            .header h1 {
+                font-size: 22px;
+            }
+            .balance-amount {
+                font-size: 28px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="toast" id="toast"></div>
+
+    <div class="container">
+        <div class="header">
+            <h1>💰 Meus Gastos</h1>
+            <p>Controle Financeiro Pessoal</p>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('overview')">📊 Visão</button>
+            <button class="tab-btn" onclick="switchTab('expenses')">💸 Despesas</button>
+            <button class="tab-btn" onclick="switchTab('income')">💰 Receitas</button>
+        </div>
+
+        <!-- TAB: VISÃO GERAL -->
+        <div id="overview-tab" class="tab-content active">
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <div class="summary-label">Receitas</div>
+                    <div class="summary-value income" id="summaryIncome">R$ 0</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-label">Despesas</div>
+                    <div class="summary-value expense" id="summaryExpense">R$ 0</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-label">Saldo</div>
+                    <div class="summary-value balance" id="summaryBalance">R$ 0</div>
+                </div>
+            </div>
+
+            <div class="balance-card">
+                <div class="balance-label">Saldo do Mês</div>
+                <div class="balance-amount" id="balanceAmount">R$ 0,00</div>
+            </div>
+
+            <div class="list-card">
+                <div class="form-title">📈 Despesas por Categoria</div>
+                <div id="categoryBreakdown"></div>
+            </div>
+
+            <div class="list-card">
+                <div class="form-title">💳 % Sobre Receita</div>
+                <div id="percentageBreakdown"></div>
+            </div>
+        </div>
+
+        <!-- TAB: DESPESAS -->
+        <div id="expenses-tab" class="tab-content">
+            <div class="balance-card">
+                <div class="balance-label">Total de Despesas</div>
+                <div class="balance-amount" style="color: #ef4444;" id="totalExpenses">R$ 0,00</div>
+            </div>
+
+            <div class="form-card">
+                <div class="form-title">➕ Nova Despesa</div>
+                <form id="expenseForm">
+                    <div class="form-group">
+                        <label for="expenseAmount">Valor (R$)</label>
+                        <input type="number" id="expenseAmount" step="0.01" required placeholder="0,00" inputmode="decimal">
+                    </div>
+                    <div class="form-group">
+                        <label for="expenseCategory">Categoria</label>
+                        <select id="expenseCategory" required>
+                            <option value="">Selecione...</option>
+                            <option value="Alimentação">🍔 Alimentação</option>
+                            <option value="Transporte">🚗 Transporte</option>
+                            <option value="Lazer">🎮 Lazer</option>
+                            <option value="Saúde">💊 Saúde</option>
+                            <option value="Educação">📚 Educação</option>
+                            <option value="Moradia">🏠 Moradia</option>
+                            <option value="Vestuário">👕 Vestuário</option>
+                            <option value="Contas">🧾 Contas</option>
+                            <option value="Saturno">🪐 Saturno</option>
+                            <option value="Outros">📦 Outros</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="expenseDescription">Descrição (opcional)</label>
+                        <textarea id="expenseDescription" placeholder="Ex: Almoço"></textarea>
+                    </div>
+                    <button type="submit" class="btn">Adicionar Despesa</button>
+                </form>
+            </div>
+
+            <div class="list-card">
+                <div class="form-title">📊 Histórico</div>
+                <div class="filter-buttons">
+                    <button class="filter-btn active" onclick="filterExpenses('all')">Todos</button>
+                    <button class="filter-btn" onclick="filterExpenses('today')">Hoje</button>
+                    <button class="filter-btn" onclick="filterExpenses('week')">Semana</button>
+                    <button class="filter-btn" onclick="filterExpenses('month')">Mês</button>
+                </div>
+                <div id="expensesList"></div>
+            </div>
+        </div>
+
+        <!-- TAB: RECEITAS -->
+        <div id="income-tab" class="tab-content">
+            <div class="balance-card">
+                <div class="balance-label">Total de Receitas</div>
+                <div class="balance-amount" style="color: #10b981;" id="totalIncome">R$ 0,00</div>
+            </div>
+
+            <div class="form-card">
+                <div class="form-title">➕ Nova Receita</div>
+                <form id="incomeForm">
+                    <div class="form-group">
+                        <label for="incomeAmount">Valor (R$)</label>
+                        <input type="number" id="incomeAmount" step="0.01" required placeholder="0,00" inputmode="decimal">
+                    </div>
+                    <div class="form-group">
+                        <label for="incomeCategory">Categoria</label>
+                        <select id="incomeCategory" required>
+                            <option value="">Selecione...</option>
+                            <option value="Salário">💼 Salário</option>
+                            <option value="Freelance">💻 Freelance</option>
+                            <option value="Investimentos">📈 Investimentos</option>
+                            <option value="Outros">💵 Outros</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="incomeDescription">Descrição (opcional)</label>
+                        <textarea id="incomeDescription" placeholder="Ex: Salário Janeiro"></textarea>
+                    </div>
+                    <button type="submit" class="btn income-btn">Adicionar Receita</button>
+                </form>
+            </div>
+
+            <div class="list-card">
+                <div class="form-title">📊 Histórico</div>
+                <div class="filter-buttons">
+                    <button class="filter-btn active" onclick="filterIncome('all')">Todos</button>
+                    <button class="filter-btn" onclick="filterIncome('today')">Hoje</button>
+                    <button class="filter-btn" onclick="filterIncome('week')">Semana</button>
+                    <button class="filter-btn" onclick="filterIncome('month')">Mês</button>
+                </div>
+                <div id="incomeList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
