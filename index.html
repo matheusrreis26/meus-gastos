@@ -16,14 +16,9 @@
 
     <title>Meus Gastos</title>
 
-    <!-- Chart.js para gráficos -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-
-    <!-- jsPDF para exportar PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
-
-    <!-- SheetJS para exportar Excel -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 
     <style>
@@ -332,6 +327,18 @@
             font-size: 11px;
             font-weight: 700;
             margin-bottom: 6px;
+        }
+
+        .payment-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            background: #fce7f3;
+            color: #db2777;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 700;
+            margin-bottom: 6px;
+            margin-left: 6px;
         }
 
         .item-description {
@@ -671,6 +678,45 @@
             cursor: pointer;
         }
 
+        .card-invoice {
+            background: #fef3c7;
+            padding: 16px;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            border-left: 4px solid #f59e0b;
+        }
+
+        .card-invoice-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .card-name {
+            font-size: 16px;
+            font-weight: 700;
+            color: #92400e;
+        }
+
+        .card-total {
+            font-size: 20px;
+            font-weight: 800;
+            color: #f59e0b;
+        }
+
+        .installments-option {
+            display: none;
+            margin-top: 16px;
+            padding: 16px;
+            background: #fef3c7;
+            border-radius: 12px;
+        }
+
+        .installments-option.show {
+            display: block;
+        }
+
         @media (max-width: 360px) {
             .header h1 {
                 font-size: 22px;
@@ -694,7 +740,6 @@
             <p>Controle Financeiro Pessoal</p>
         </div>
 
-        <!-- Seletor de Mês -->
         <div class="month-selector">
             <button class="month-btn" onclick="manager.changeMonth(-1)">◀</button>
             <div class="month-display" id="monthDisplay">Janeiro 2025</div>
@@ -705,11 +750,10 @@
             <button class="tab-btn active" onclick="switchTab('overview')">📊 Visão</button>
             <button class="tab-btn" onclick="switchTab('expenses')">💸 Despesas</button>
             <button class="tab-btn" onclick="switchTab('income')">💰 Receitas</button>
-            <button class="tab-btn" onclick="switchTab('credit')">💳 Cartão</button>
+            <button class="tab-btn" onclick="switchTab('cards')">💳 Cartões</button>
             <button class="tab-btn" onclick="switchTab('notifications')">🔔 Alertas</button>
-            <button class="tab-btn" onclick="switchTab('categories')">🏷️ Categorias</button>
+            <button class="tab-btn" onclick="switchTab('settings')">⚙️ Config</button>
             <button class="tab-btn" onclick="switchTab('export')">📤 Exportar</button>
-            <button class="tab-btn" onclick="switchTab('sync')">🔄 Sync</button>
         </div>
 
         <!-- TAB: VISÃO GERAL -->
@@ -732,6 +776,11 @@
             <div class="balance-card">
                 <div class="balance-label">Saldo do Mês</div>
                 <div class="balance-amount" id="balanceAmount">R$ 0,00</div>
+            </div>
+
+            <div class="list-card">
+                <div class="form-title">💳 Gastos por Forma de Pagamento</div>
+                <div id="paymentBreakdown"></div>
             </div>
 
             <div class="list-card">
@@ -771,6 +820,29 @@
                     <div class="form-group">
                         <label for="expenseCategory">Categoria</label>
                         <select id="expenseCategory" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="expensePaymentMethod">Forma de Pagamento</label>
+                        <select id="expensePaymentMethod" required onchange="manager.handlePaymentMethodChange()"></select>
+                    </div>
+                    <div id="installmentsSection" class="installments-option">
+                        <div class="form-group">
+                            <label for="expenseInstallments">Número de Parcelas</label>
+                            <select id="expenseInstallments">
+                                <option value="1">À vista</option>
+                                <option value="2">2x</option>
+                                <option value="3">3x</option>
+                                <option value="4">4x</option>
+                                <option value="5">5x</option>
+                                <option value="6">6x</option>
+                                <option value="7">7x</option>
+                                <option value="8">8x</option>
+                                <option value="9">9x</option>
+                                <option value="10">10x</option>
+                                <option value="11">11x</option>
+                                <option value="12">12x</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="expenseDate">Data</label>
@@ -852,52 +924,11 @@
             </div>
         </div>
 
-        <!-- TAB: CARTÃO DE CRÉDITO -->
-        <div id="credit-tab" class="tab-content">
-            <div class="balance-card">
-                <div class="balance-label">Fatura Atual</div>
-                <div class="balance-amount" style="color: #f59e0b;" id="totalCredit">R$ 0,00</div>
-            </div>
-
-            <div class="form-card">
-                <div class="form-title">➕ Nova Compra no Cartão</div>
-                <form id="creditForm">
-                    <div class="form-group">
-                        <label for="creditAmount">Valor Total (R$)</label>
-                        <input type="number" id="creditAmount" step="0.01" required placeholder="0,00" inputmode="decimal">
-                    </div>
-                    <div class="form-group">
-                        <label for="creditInstallments">Número de Parcelas</label>
-                        <select id="creditInstallments" required>
-                            <option value="1">À vista</option>
-                            <option value="2">2x</option>
-                            <option value="3">3x</option>
-                            <option value="4">4x</option>
-                            <option value="5">5x</option>
-                            <option value="6">6x</option>
-                            <option value="7">7x</option>
-                            <option value="8">8x</option>
-                            <option value="9">9x</option>
-                            <option value="10">10x</option>
-                            <option value="11">11x</option>
-                            <option value="12">12x</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="creditCategory">Categoria</label>
-                        <select id="creditCategory" required></select>
-                    </div>
-                    <div class="form-group">
-                        <label for="creditDescription">Descrição</label>
-                        <textarea id="creditDescription" required placeholder="Ex: Notebook Dell"></textarea>
-                    </div>
-                    <button type="submit" class="btn">Adicionar ao Cartão</button>
-                </form>
-            </div>
-
+        <!-- TAB: CARTÕES -->
+        <div id="cards-tab" class="tab-content">
             <div class="list-card">
-                <div class="form-title">💳 Compras Parceladas</div>
-                <div id="creditList"></div>
+                <div class="form-title">💳 Faturas dos Cartões</div>
+                <div id="cardInvoices"></div>
             </div>
         </div>
 
@@ -909,8 +940,8 @@
             </div>
         </div>
 
-        <!-- TAB: GERENCIAR CATEGORIAS -->
-        <div id="categories-tab" class="tab-content">
+        <!-- TAB: CONFIGURAÇÕES -->
+        <div id="settings-tab" class="tab-content">
             <div class="form-card">
                 <div class="form-title">🏷️ Categorias de Despesas</div>
                 <div class="category-list" id="expenseCategoriesList"></div>
@@ -928,26 +959,18 @@
                     <button onclick="manager.addIncomeCategory()">➕</button>
                 </div>
             </div>
-        </div>
 
-        <!-- TAB: EXPORTAR -->
-        <div id="export-tab" class="tab-content">
             <div class="form-card">
-                <div class="form-title">📤 Exportar Dados</div>
-                <p style="color: #6b7280; font-size: 14px; margin-bottom: 20px;">
-                    Exporte seus dados financeiros para análise externa ou backup.
-                </p>
-                <div class="btn-group">
-                    <button class="btn secondary" onclick="exportPDF()">📄 Exportar PDF</button>
-                    <button class="btn secondary" onclick="exportExcel()">📊 Exportar Excel</button>
+                <div class="form-title">💳 Meus Cartões de Crédito</div>
+                <div class="category-list" id="creditCardsList"></div>
+                <div class="add-category-form">
+                    <input type="text" id="newCreditCard" placeholder="Ex: Nubank, Inter, C6">
+                    <button onclick="manager.addCreditCard()">➕</button>
                 </div>
             </div>
-        </div>
 
-        <!-- TAB: SINCRONIZAÇÃO -->
-        <div id="sync-tab" class="tab-content">
             <div class="form-card">
-                <div class="form-title">🔄 Sincronização entre Dispositivos</div>
+                <div class="form-title">🔄 Sincronização</div>
                 <p style="color: #6b7280; font-size: 14px; margin-bottom: 16px;">
                     Compartilhe seus dados com outro dispositivo ou pessoa (ex: casal).
                 </p>
@@ -969,15 +992,19 @@
                     <input type="text" id="syncCodeInput" placeholder="Ex: ABC123" maxlength="6" style="text-transform: uppercase;">
                 </div>
                 <button class="btn" onclick="syncWithCode()">🔗 Conectar Dispositivos</button>
+            </div>
+        </div>
 
-                <div style="margin-top: 20px; padding: 16px; background: #fef3c7; border-radius: 12px;">
-                    <p style="font-size: 12px; color: #92400e; line-height: 1.6;">
-                        ⚠️ <strong>Como funciona:</strong><br>
-                        1. Gere um código neste dispositivo<br>
-                        2. Digite o mesmo código no outro dispositivo<br>
-                        3. Os dados serão mesclados automaticamente<br>
-                        4. Ambos verão as mesmas informações
-                    </p>
+        <!-- TAB: EXPORTAR -->
+        <div id="export-tab" class="tab-content">
+            <div class="form-card">
+                <div class="form-title">📤 Exportar Dados</div>
+                <p style="color: #6b7280; font-size: 14px; margin-bottom: 20px;">
+                    Exporte seus dados financeiros para análise externa ou backup.
+                </p>
+                <div class="btn-group">
+                    <button class="btn secondary" onclick="exportPDF()">📄 Exportar PDF</button>
+                    <button class="btn secondary" onclick="exportExcel()">📊 Exportar Excel</button>
                 </div>
             </div>
         </div>
