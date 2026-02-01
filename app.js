@@ -414,6 +414,8 @@ class FinanceManager {
     }
 
     addExpense() {
+        console.log('🔵 addExpense() chamado');
+
         const amount = parseFloat(this.getFieldValue('expenseAmount'));
         const category = this.getFieldValue('expenseCategory');
         const paymentMethod = this.getFieldValue('expensePaymentMethod');
@@ -423,7 +425,13 @@ class FinanceManager {
         const recurring = document.getElementById('expenseRecurring')?.checked || false;
         const tagsInput = this.getFieldValue('expenseTags');
 
-        if (!amount || !category || !date) { showToast('⚠️ Preencha os campos obrigatórios'); return; }
+        console.log('📊 Dados capturados:', { amount, category, date });
+
+        if (!amount || !category || !date) {
+            console.log('❌ Validação falhou');
+            showToast('⚠️ Preencha os campos obrigatórios');
+            return;
+        }
 
         const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()).filter(t => t) : [];
         const isCreditCard = paymentMethod.includes('Crédito') || this.creditCards.some(card => paymentMethod === card);
@@ -440,7 +448,10 @@ class FinanceManager {
             id: Date.now() + Math.random(),
             amount: installmentAmount,
             totalAmount: amount,
-            category, paymentMethod, description, tags,
+            category,
+            paymentMethod,
+            description,
+            tags,
             dueDate: dueDate || null,
             date: new Date(date).toISOString(),
             recurring,
@@ -450,10 +461,20 @@ class FinanceManager {
 
         if (recurring) expense.originalDate = expense.date;
 
+        console.log('💾 Salvando despesa:', expense);
+
         this.expenses.unshift(expense);
         this.saveData('expenses', this.expenses);
-        this.render();
 
+        console.log('✅ Total de despesas agora:', this.expenses.length);
+        console.log('📅 Mês selecionado:', this.selectedMonth, this.selectedYear);
+
+        // Renderizar TUDO
+        this.render();
+        this.renderExpenses();
+        this.renderOverview();
+
+        // Limpar formulário
         const form = document.getElementById('expenseForm');
         if (form) form.reset();
         this.setFieldValue('expenseDate', new Date().toISOString().split('T')[0]);
@@ -462,35 +483,69 @@ class FinanceManager {
         if (installmentsSection) installmentsSection.classList.remove('show');
 
         showToast('✅ Despesa adicionada!');
+
+        // Forçar atualização visual
+        setTimeout(() => {
+            console.log('🔄 Forçando re-renderização...');
+            this.renderExpenses();
+            this.renderOverview();
+        }, 100);
     }
 
     addIncome() {
+        console.log('🔵 addIncome() chamado');
+
         const amount = parseFloat(this.getFieldValue('incomeAmount'));
         const category = this.getFieldValue('incomeCategory');
         const description = this.getFieldValue('incomeDescription');
         const date = this.getFieldValue('incomeDate');
         const recurring = document.getElementById('incomeRecurring')?.checked || false;
 
-        if (!amount || !category || !date) { showToast('⚠️ Preencha os campos obrigatórios'); return; }
+        console.log('📊 Dados capturados:', { amount, category, date });
+
+        if (!amount || !category || !date) {
+            console.log('❌ Validação falhou');
+            showToast('⚠️ Preencha os campos obrigatórios');
+            return;
+        }
 
         const income = {
             id: Date.now() + Math.random(),
-            amount, category, description,
+            amount,
+            category,
+            description,
             date: new Date(date).toISOString(),
             recurring
         };
 
         if (recurring) income.originalDate = income.date;
 
+        console.log('💾 Salvando receita:', income);
+
         this.income.unshift(income);
         this.saveData('income', this.income);
-        this.render();
 
+        console.log('✅ Total de receitas agora:', this.income.length);
+        console.log('📅 Mês selecionado:', this.selectedMonth, this.selectedYear);
+
+        // Renderizar TUDO
+        this.render();
+        this.renderIncome();
+        this.renderOverview();
+
+        // Limpar formulário
         const form = document.getElementById('incomeForm');
         if (form) form.reset();
         this.setFieldValue('incomeDate', new Date().toISOString().split('T')[0]);
 
         showToast('✅ Receita adicionada!');
+
+        // Forçar atualização visual
+        setTimeout(() => {
+            console.log('🔄 Forçando re-renderização...');
+            this.renderIncome();
+            this.renderOverview();
+        }, 100);
     }
 
     deleteExpense(id) {
@@ -531,7 +586,7 @@ class FinanceManager {
     }
 
     getFilteredExpenses() {
-        return this.expenses.filter(expense => {
+        const filtered = this.expenses.filter(expense => {
             const expenseDate = new Date(expense.date);
             const isInMonth = expenseDate.getMonth() === this.selectedMonth && expenseDate.getFullYear() === this.selectedYear;
             if (!isInMonth) return false;
@@ -539,10 +594,12 @@ class FinanceManager {
             if (this.expenseFilter === 'oneTime') return !expense.recurring;
             return true;
         });
+        console.log('🔍 Despesas filtradas:', filtered.length, 'de', this.expenses.length);
+        return filtered;
     }
 
     getFilteredIncome() {
-        return this.income.filter(income => {
+        const filtered = this.income.filter(income => {
             const incomeDate = new Date(income.date);
             const isInMonth = incomeDate.getMonth() === this.selectedMonth && incomeDate.getFullYear() === this.selectedYear;
             if (!isInMonth) return false;
@@ -550,6 +607,8 @@ class FinanceManager {
             if (this.incomeFilter === 'oneTime') return !income.recurring;
             return true;
         });
+        console.log('🔍 Receitas filtradas:', filtered.length, 'de', this.income.length);
+        return filtered;
     }
 
     getMonthlyTotals() {
@@ -824,6 +883,7 @@ class FinanceManager {
     setQuickDate() { showToast('📅 Funcionalidade em desenvolvimento'); }
 
     render() {
+        console.log('🔄 render() chamado');
         this.renderOverview();
         this.renderExpenses();
         this.renderIncome();
@@ -832,9 +892,12 @@ class FinanceManager {
     }
 
     renderOverview() {
+        console.log('📊 renderOverview() chamado');
         const totals = this.getMonthlyTotals();
         const breakdown = this.getCategoryBreakdown();
         const paymentBreakdown = this.getPaymentBreakdown();
+
+        console.log('💰 Totais:', totals);
 
         this.setFieldValue('summaryIncome', `R$ ${this.formatShort(totals.income)}`);
         this.setFieldValue('summaryExpense', `R$ ${this.formatShort(totals.expenses)}`);
@@ -905,11 +968,15 @@ class FinanceManager {
     }
 
     renderExpenses() {
+        console.log('💸 renderExpenses() chamado');
         const totals = this.getMonthlyTotals();
         this.setFieldValue('totalExpenses', `R$ ${totals.expenses.toFixed(2)}`);
         const filtered = this.getFilteredExpenses();
         const list = document.getElementById('expensesList');
         if (!list) return;
+
+        console.log('📝 Renderizando', filtered.length, 'despesas');
+
         if (filtered.length === 0) {
             list.innerHTML = '<div class="empty-state"><div class="empty-icon">💸</div>Nenhuma despesa neste período</div>';
             return;
@@ -937,11 +1004,15 @@ class FinanceManager {
     }
 
     renderIncome() {
+        console.log('💰 renderIncome() chamado');
         const totals = this.getMonthlyTotals();
         this.setFieldValue('totalIncome', `R$ ${totals.income.toFixed(2)}`);
         const filtered = this.getFilteredIncome();
         const list = document.getElementById('incomeList');
         if (!list) return;
+
+        console.log('📝 Renderizando', filtered.length, 'receitas');
+
         if (filtered.length === 0) {
             list.innerHTML = '<div class="empty-state"><div class="empty-icon">💰</div>Nenhuma receita neste período</div>';
             return;
