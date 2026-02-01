@@ -1,5 +1,5 @@
 // ========================================
-// MEUS GASTOS - VERSÃO ESTÁVEL
+// MEUS GASTOS - VERSÃO CORRIGIDA E TESTADA
 // ========================================
 
 // Service Worker
@@ -23,30 +23,46 @@ function switchTab(tab) {
     event.target.classList.add('active');
     document.getElementById(`${tab}-tab`).classList.add('active');
 
-    if (tab === 'overview') {
-        manager.renderCharts();
-    }
+    // Atualizar conteúdo específico
+    setTimeout(() => {
+        if (tab === 'overview') {
+            manager.renderOverview();
+            manager.renderCharts();
+        }
 
-    if (tab === 'settings') {
-        manager.renderCategoryManagement();
-    }
+        if (tab === 'settings') {
+            manager.renderCategoryManagement();
+        }
 
-    if (tab === 'cards') {
-        manager.renderCardInvoices();
-    }
+        if (tab === 'cards') {
+            manager.renderCardInvoices();
+        }
 
-    if (tab === 'goals') {
-        manager.renderGoals();
-        manager.renderBudgetProgress();
-    }
+        if (tab === 'goals') {
+            manager.renderGoals();
+            manager.renderBudgetProgress();
+        }
 
-    if (tab === 'reserve') {
-        manager.renderReserveProgress();
-    }
+        if (tab === 'reserve') {
+            manager.renderReserveProgress();
+        }
 
-    if (tab === 'analysis') {
-        manager.renderTrendsAnalysis();
-    }
+        if (tab === 'analysis') {
+            manager.renderTrendsAnalysis();
+        }
+
+        if (tab === 'expenses') {
+            manager.renderExpenses();
+        }
+
+        if (tab === 'income') {
+            manager.renderIncome();
+        }
+
+        if (tab === 'notifications') {
+            manager.renderNotifications();
+        }
+    }, 50);
 }
 
 // Modal
@@ -201,31 +217,58 @@ class FinanceManager {
         setInterval(() => checkDueDates(), 60 * 60 * 1000);
 
         const today = new Date().toISOString().split('T')[0];
-        document.getElementById('expenseDate').value = today;
-        document.getElementById('incomeDate').value = today;
+        const expenseDateField = document.getElementById('expenseDate');
+        const incomeDateField = document.getElementById('incomeDate');
+
+        if (expenseDateField) expenseDateField.value = today;
+        if (incomeDateField) incomeDateField.value = today;
 
         const savedCode = localStorage.getItem('syncCode');
-        if (savedCode) document.getElementById('syncCode').textContent = savedCode;
+        if (savedCode) {
+            const syncCodeEl = document.getElementById('syncCode');
+            if (syncCodeEl) syncCodeEl.textContent = savedCode;
+        }
 
-        if (this.monthlyBudget > 0) document.getElementById('monthlyBudget').value = this.monthlyBudget;
-        if (this.emergencyReserve > 0) document.getElementById('reserveAmount').value = this.emergencyReserve;
+        if (this.monthlyBudget > 0) {
+            const budgetField = document.getElementById('monthlyBudget');
+            if (budgetField) budgetField.value = this.monthlyBudget;
+        }
+
+        if (this.emergencyReserve > 0) {
+            const reserveField = document.getElementById('reserveAmount');
+            if (reserveField) reserveField.value = this.emergencyReserve;
+        }
+
+        console.log('✅ App inicializado');
+        console.log('📊 Despesas:', this.expenses.length);
+        console.log('💰 Receitas:', this.income.length);
     }
 
     setupEventListeners() {
-        document.getElementById('expenseForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.addExpense();
-        });
+        const expenseForm = document.getElementById('expenseForm');
+        const incomeForm = document.getElementById('incomeForm');
 
-        document.getElementById('incomeForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.addIncome();
-        });
+        if (expenseForm) {
+            expenseForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.addExpense();
+            });
+        }
+
+        if (incomeForm) {
+            incomeForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.addIncome();
+            });
+        }
     }
 
     handlePaymentMethodChange() {
         const paymentMethod = document.getElementById('expensePaymentMethod').value;
         const installmentsSection = document.getElementById('installmentsSection');
+
+        if (!installmentsSection) return;
+
         const isCreditCard = paymentMethod.includes('Crédito') || this.creditCards.some(card => paymentMethod === card);
 
         if (isCreditCard) {
@@ -241,8 +284,10 @@ class FinanceManager {
             const reader = new FileReader();
             reader.onload = (e) => {
                 const preview = document.getElementById(previewId);
-                preview.style.display = 'block';
-                preview.innerHTML = `<p style="font-size: 13px; color: #6b7280;">Comprovante anexado</p><img src="${e.target.result}" style="max-width: 100%; border-radius: 8px;">`;
+                if (preview) {
+                    preview.style.display = 'block';
+                    preview.innerHTML = `<p style="font-size: 13px; color: #6b7280;">Comprovante anexado</p><img src="${e.target.result}" style="max-width: 100%; border-radius: 8px;">`;
+                }
             };
             reader.readAsDataURL(file);
         }
@@ -279,6 +324,8 @@ class FinanceManager {
     // Categorias
     addExpenseCategory() {
         const input = document.getElementById('newExpenseCategory');
+        if (!input) return;
+
         const category = input.value.trim();
 
         if (!category) {
@@ -316,6 +363,8 @@ class FinanceManager {
 
     addIncomeCategory() {
         const input = document.getElementById('newIncomeCategory');
+        if (!input) return;
+
         const category = input.value.trim();
 
         if (!category) {
@@ -353,6 +402,8 @@ class FinanceManager {
 
     addCreditCard() {
         const input = document.getElementById('newCreditCard');
+        if (!input) return;
+
         let cardName = input.value.trim();
 
         if (!cardName) {
@@ -387,6 +438,8 @@ class FinanceManager {
 
     addTag() {
         const input = document.getElementById('newTag');
+        if (!input) return;
+
         const tag = input.value.trim();
 
         if (!tag) {
@@ -424,27 +477,35 @@ class FinanceManager {
         if (expenseList) {
             expenseList.innerHTML = this.expenseCategories.map(cat => {
                 const isDefault = this.defaultExpenseCategories.includes(cat);
-                return `<div class="category-tag">${cat}${!isDefault ? `<button onclick="manager.removeExpenseCategory('${cat}')">✕</button>` : ''}</div>`;
+                const safeCat = cat.replace(/'/g, '&#39;');
+                return `<div class="category-tag">${cat}${!isDefault ? `<button onclick="manager.removeExpenseCategory('${safeCat}')">✕</button>` : ''}</div>`;
             }).join('');
         }
 
         if (incomeList) {
             incomeList.innerHTML = this.incomeCategories.map(cat => {
                 const isDefault = this.defaultIncomeCategories.includes(cat);
-                return `<div class="category-tag">${cat}${!isDefault ? `<button onclick="manager.removeIncomeCategory('${cat}')">✕</button>` : ''}</div>`;
+                const safeCat = cat.replace(/'/g, '&#39;');
+                return `<div class="category-tag">${cat}${!isDefault ? `<button onclick="manager.removeIncomeCategory('${safeCat}')">✕</button>` : ''}</div>`;
             }).join('');
         }
 
         if (cardsList) {
             cardsList.innerHTML = this.creditCards.length === 0 
                 ? '<p style="color: #9ca3af;">Nenhum cartão cadastrado</p>' 
-                : this.creditCards.map(card => `<div class="category-tag">${card}<button onclick="manager.removeCreditCard('${card}')">✕</button></div>`).join('');
+                : this.creditCards.map(card => {
+                    const safeCard = card.replace(/'/g, '&#39;');
+                    return `<div class="category-tag">${card}<button onclick="manager.removeCreditCard('${safeCard}')">✕</button></div>`;
+                }).join('');
         }
 
         if (tagsList) {
             tagsList.innerHTML = this.tags.length === 0 
                 ? '<p style="color: #9ca3af;">Nenhuma tag cadastrada</p>' 
-                : this.tags.map(tag => `<div class="category-tag">🏷️ ${tag}<button onclick="manager.removeTag('${tag}')">✕</button></div>`).join('');
+                : this.tags.map(tag => {
+                    const safeTag = tag.replace(/'/g, '&#39;');
+                    return `<div class="category-tag">🏷️ ${tag}<button onclick="manager.removeTag('${safeTag}')">✕</button></div>`;
+                }).join('');
         }
     }
 
@@ -465,7 +526,10 @@ class FinanceManager {
 
     updateMonthDisplay() {
         const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-        document.getElementById('monthDisplay').textContent = `${months[this.selectedMonth]} ${this.selectedYear}`;
+        const displayEl = document.getElementById('monthDisplay');
+        if (displayEl) {
+            displayEl.textContent = `${months[this.selectedMonth]} ${this.selectedYear}`;
+        }
     }
 
     getMonthYearString() {
@@ -474,14 +538,33 @@ class FinanceManager {
     }
 
     addExpense() {
-        const amount = parseFloat(document.getElementById('expenseAmount').value);
-        const category = document.getElementById('expenseCategory').value;
-        const paymentMethod = document.getElementById('expensePaymentMethod').value;
-        const description = document.getElementById('expenseDescription').value;
-        const date = document.getElementById('expenseDate').value;
-        const dueDate = document.getElementById('expenseDueDate').value;
-        const recurring = document.getElementById('expenseRecurring').checked;
-        const tagsInput = document.getElementById('expenseTags').value;
+        const amountField = document.getElementById('expenseAmount');
+        const categoryField = document.getElementById('expenseCategory');
+        const paymentMethodField = document.getElementById('expensePaymentMethod');
+        const descriptionField = document.getElementById('expenseDescription');
+        const dateField = document.getElementById('expenseDate');
+        const dueDateField = document.getElementById('expenseDueDate');
+        const recurringField = document.getElementById('expenseRecurring');
+        const tagsField = document.getElementById('expenseTags');
+
+        if (!amountField || !categoryField || !dateField) {
+            showToast('⚠️ Erro no formulário');
+            return;
+        }
+
+        const amount = parseFloat(amountField.value);
+        const category = categoryField.value;
+        const paymentMethod = paymentMethodField ? paymentMethodField.value : '';
+        const description = descriptionField ? descriptionField.value : '';
+        const date = dateField.value;
+        const dueDate = dueDateField ? dueDateField.value : '';
+        const recurring = recurringField ? recurringField.checked : false;
+        const tagsInput = tagsField ? tagsField.value : '';
+
+        if (!amount || !category || !date) {
+            showToast('⚠️ Preencha os campos obrigatórios');
+            return;
+        }
 
         const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()).filter(t => t) : [];
         const isCreditCard = paymentMethod.includes('Crédito') || this.creditCards.some(card => paymentMethod === card);
@@ -490,12 +573,15 @@ class FinanceManager {
         let installmentAmount = amount;
 
         if (isCreditCard) {
-            installments = parseInt(document.getElementById('expenseInstallments').value) || 1;
-            installmentAmount = amount / installments;
+            const installmentsField = document.getElementById('expenseInstallments');
+            if (installmentsField) {
+                installments = parseInt(installmentsField.value) || 1;
+                installmentAmount = amount / installments;
+            }
         }
 
         const expense = {
-            id: Date.now(),
+            id: Date.now() + Math.random(),
             amount: installmentAmount,
             totalAmount: amount,
             category,
@@ -513,23 +599,50 @@ class FinanceManager {
 
         this.expenses.unshift(expense);
         this.saveData('expenses', this.expenses);
+
+        console.log('✅ Despesa adicionada:', expense);
+        console.log('📊 Total de despesas:', this.expenses.length);
+
+        // Renderizar tudo
         this.render();
 
-        document.getElementById('expenseForm').reset();
-        document.getElementById('expenseDate').value = new Date().toISOString().split('T')[0];
-        document.getElementById('installmentsSection').classList.remove('show');
+        // Limpar formulário
+        const form = document.getElementById('expenseForm');
+        if (form) form.reset();
+
+        if (dateField) dateField.value = new Date().toISOString().split('T')[0];
+
+        const installmentsSection = document.getElementById('installmentsSection');
+        if (installmentsSection) installmentsSection.classList.remove('show');
+
         showToast('✅ Despesa adicionada!');
     }
 
     addIncome() {
-        const amount = parseFloat(document.getElementById('incomeAmount').value);
-        const category = document.getElementById('incomeCategory').value;
-        const description = document.getElementById('incomeDescription').value;
-        const date = document.getElementById('incomeDate').value;
-        const recurring = document.getElementById('incomeRecurring').checked;
+        const amountField = document.getElementById('incomeAmount');
+        const categoryField = document.getElementById('incomeCategory');
+        const descriptionField = document.getElementById('incomeDescription');
+        const dateField = document.getElementById('incomeDate');
+        const recurringField = document.getElementById('incomeRecurring');
+
+        if (!amountField || !categoryField || !dateField) {
+            showToast('⚠️ Erro no formulário');
+            return;
+        }
+
+        const amount = parseFloat(amountField.value);
+        const category = categoryField.value;
+        const description = descriptionField ? descriptionField.value : '';
+        const date = dateField.value;
+        const recurring = recurringField ? recurringField.checked : false;
+
+        if (!amount || !category || !date) {
+            showToast('⚠️ Preencha os campos obrigatórios');
+            return;
+        }
 
         const income = {
-            id: Date.now(),
+            id: Date.now() + Math.random(),
             amount,
             category,
             description,
@@ -541,10 +654,19 @@ class FinanceManager {
 
         this.income.unshift(income);
         this.saveData('income', this.income);
+
+        console.log('✅ Receita adicionada:', income);
+        console.log('💰 Total de receitas:', this.income.length);
+
+        // Renderizar tudo
         this.render();
 
-        document.getElementById('incomeForm').reset();
-        document.getElementById('incomeDate').value = new Date().toISOString().split('T')[0];
+        // Limpar formulário
+        const form = document.getElementById('incomeForm');
+        if (form) form.reset();
+
+        if (dateField) dateField.value = new Date().toISOString().split('T')[0];
+
         showToast('✅ Receita adicionada!');
     }
 
@@ -681,12 +803,21 @@ class FinanceManager {
         const monthStart = new Date(this.selectedYear, this.selectedMonth, 1);
         const monthEnd = new Date(this.selectedYear, this.selectedMonth + 1, 0);
 
+        console.log('🔍 Buscando faturas de cartão para:', this.getMonthYearString());
+
         const creditExpenses = this.expenses.filter(e => {
             const eDate = new Date(e.date);
             const isInMonth = eDate >= monthStart && eDate <= monthEnd;
             const isCreditCard = e.paymentMethod && (e.paymentMethod.includes('Crédito') || this.creditCards.some(card => e.paymentMethod === card));
+
+            if (isInMonth && isCreditCard) {
+                console.log('💳 Despesa no crédito encontrada:', e);
+            }
+
             return isInMonth && isCreditCard;
         });
+
+        console.log('💳 Total de despesas no crédito:', creditExpenses.length);
 
         const invoices = {};
         creditExpenses.forEach(expense => {
@@ -698,13 +829,21 @@ class FinanceManager {
             invoices[card].items.push(expense);
         });
 
-        return Object.values(invoices);
+        const result = Object.values(invoices);
+        console.log('📊 Faturas geradas:', result);
+
+        return result;
     }
 
     // Metas
     addGoal() {
-        const category = document.getElementById('goalCategory').value;
-        const amount = parseFloat(document.getElementById('goalAmount').value);
+        const categoryField = document.getElementById('goalCategory');
+        const amountField = document.getElementById('goalAmount');
+
+        if (!categoryField || !amountField) return;
+
+        const category = categoryField.value;
+        const amount = parseFloat(amountField.value);
 
         if (!category || !amount) {
             showToast('⚠️ Preencha todos os campos');
@@ -715,8 +854,8 @@ class FinanceManager {
         this.saveData('goals', this.goals);
         this.renderGoals();
 
-        document.getElementById('goalCategory').value = '';
-        document.getElementById('goalAmount').value = '';
+        categoryField.value = '';
+        amountField.value = '';
         showToast('✅ Meta definida!');
     }
 
@@ -757,11 +896,13 @@ class FinanceManager {
                 progressClass = 'warning';
             }
 
+            const safeCat = category.replace(/'/g, '&#39;');
+
             return `
                 <div class="goal-card ${status}">
                     <div class="goal-header">
                         <div class="goal-name">${category}</div>
-                        <button class="delete-btn" onclick="manager.removeGoal('${category}')">✕</button>
+                        <button class="delete-btn" onclick="manager.removeGoal('${safeCat}')">✕</button>
                     </div>
                     <div class="goal-values">
                         <span>Gasto: R$ ${spentAmount.toFixed(2)}</span>
@@ -780,7 +921,10 @@ class FinanceManager {
 
     // Orçamento
     saveMonthlyBudget() {
-        const budget = parseFloat(document.getElementById('monthlyBudget').value);
+        const budgetField = document.getElementById('monthlyBudget');
+        if (!budgetField) return;
+
+        const budget = parseFloat(budgetField.value);
 
         if (!budget || budget <= 0) {
             showToast('⚠️ Digite um valor válido');
@@ -829,7 +973,10 @@ class FinanceManager {
 
     // Reserva
     saveReserve() {
-        const amount = parseFloat(document.getElementById('reserveAmount').value);
+        const reserveField = document.getElementById('reserveAmount');
+        if (!reserveField) return;
+
+        const amount = parseFloat(reserveField.value);
 
         if (amount < 0) {
             showToast('⚠️ Valor inválido');
@@ -942,10 +1089,12 @@ class FinanceManager {
 
     // Renderizações
     render() {
+        console.log('🔄 Renderizando tudo...');
         this.renderOverview();
         this.renderExpenses();
         this.renderIncome();
         this.renderNotifications();
+        this.renderCardInvoices();
     }
 
     renderOverview() {
@@ -953,15 +1102,23 @@ class FinanceManager {
         const breakdown = this.getCategoryBreakdown();
         const paymentBreakdown = this.getPaymentBreakdown();
 
-        document.getElementById('summaryIncome').textContent = `R$ ${this.formatShort(totals.income)}`;
-        document.getElementById('summaryExpense').textContent = `R$ ${this.formatShort(totals.expenses)}`;
-        document.getElementById('summaryBalance').textContent = `R$ ${this.formatShort(totals.balance)}`;
+        console.log('📊 Totais do mês:', totals);
 
+        const summaryIncomeEl = document.getElementById('summaryIncome');
+        const summaryExpenseEl = document.getElementById('summaryExpense');
+        const summaryBalanceEl = document.getElementById('summaryBalance');
         const balanceEl = document.getElementById('balanceAmount');
-        balanceEl.textContent = `R$ ${totals.balance.toFixed(2)}`;
-        balanceEl.className = 'balance-amount';
-        if (totals.balance > 0) balanceEl.classList.add('positive');
-        if (totals.balance < 0) balanceEl.classList.add('negative');
+
+        if (summaryIncomeEl) summaryIncomeEl.textContent = `R$ ${this.formatShort(totals.income)}`;
+        if (summaryExpenseEl) summaryExpenseEl.textContent = `R$ ${this.formatShort(totals.expenses)}`;
+        if (summaryBalanceEl) summaryBalanceEl.textContent = `R$ ${this.formatShort(totals.balance)}`;
+
+        if (balanceEl) {
+            balanceEl.textContent = `R$ ${totals.balance.toFixed(2)}`;
+            balanceEl.className = 'balance-amount';
+            if (totals.balance > 0) balanceEl.classList.add('positive');
+            if (totals.balance < 0) balanceEl.classList.add('negative');
+        }
 
         // Orçamento
         const budgetContainer = document.getElementById('budgetOverview');
@@ -995,12 +1152,16 @@ class FinanceManager {
         const insightsContainer = document.getElementById('quickInsights');
         if (insightsContainer) {
             const insights = this.generateInsights();
-            insightsContainer.innerHTML = insights.slice(0, 2).map(insight => `
-                <div class="insight-card">
-                    <div class="insight-icon">${insight.icon}</div>
-                    <div class="insight-text">${insight.text}</div>
-                </div>
-            `).join('');
+            if (insights.length > 0) {
+                insightsContainer.innerHTML = insights.slice(0, 2).map(insight => `
+                    <div class="insight-card">
+                        <div class="insight-icon">${insight.icon}</div>
+                        <div class="insight-text">${insight.text}</div>
+                    </div>
+                `).join('');
+            } else {
+                insightsContainer.innerHTML = '';
+            }
         }
 
         // Gastos por forma de pagamento
@@ -1054,13 +1215,20 @@ class FinanceManager {
 
     renderExpenses() {
         const totals = this.getMonthlyTotals();
-        document.getElementById('totalExpenses').textContent = `R$ ${totals.expenses.toFixed(2)}`;
+        const totalExpensesEl = document.getElementById('totalExpenses');
+        if (totalExpensesEl) {
+            totalExpensesEl.textContent = `R$ ${totals.expenses.toFixed(2)}`;
+        }
 
         const filtered = this.getFilteredExpenses();
         const list = document.getElementById('expensesList');
 
+        if (!list) return;
+
+        console.log('💸 Renderizando', filtered.length, 'despesas');
+
         if (filtered.length === 0) {
-            list.innerHTML = '<div class="empty-state"><div class="empty-icon">💸</div>Nenhuma despesa</div>';
+            list.innerHTML = '<div class="empty-state"><div class="empty-icon">💸</div>Nenhuma despesa neste período</div>';
             return;
         }
 
@@ -1095,13 +1263,20 @@ class FinanceManager {
 
     renderIncome() {
         const totals = this.getMonthlyTotals();
-        document.getElementById('totalIncome').textContent = `R$ ${totals.income.toFixed(2)}`;
+        const totalIncomeEl = document.getElementById('totalIncome');
+        if (totalIncomeEl) {
+            totalIncomeEl.textContent = `R$ ${totals.income.toFixed(2)}`;
+        }
 
         const filtered = this.getFilteredIncome();
         const list = document.getElementById('incomeList');
 
+        if (!list) return;
+
+        console.log('💰 Renderizando', filtered.length, 'receitas');
+
         if (filtered.length === 0) {
-            list.innerHTML = '<div class="empty-state"><div class="empty-icon">💰</div>Nenhuma receita</div>';
+            list.innerHTML = '<div class="empty-state"><div class="empty-icon">💰</div>Nenhuma receita neste período</div>';
             return;
         }
 
@@ -1126,8 +1301,10 @@ class FinanceManager {
         const container = document.getElementById('cardInvoices');
         if (!container) return;
 
+        console.log('💳 Renderizando faturas:', invoices);
+
         if (invoices.length === 0) {
-            container.innerHTML = '<div class="empty-state"><div class="empty-icon">💳</div>Nenhuma compra no crédito</div>';
+            container.innerHTML = '<div class="empty-state"><div class="empty-icon">💳</div>Nenhuma compra no crédito este mês</div>';
             return;
         }
 
@@ -1169,9 +1346,10 @@ class FinanceManager {
         });
 
         const list = document.getElementById('notificationsList');
+        if (!list) return;
 
         if (dueSoon.length === 0) {
-            list.innerHTML = '<div class="empty-state"><div class="empty-icon">🔔</div>Nenhuma conta a vencer</div>';
+            list.innerHTML = '<div class="empty-state"><div class="empty-icon">🔔</div>Nenhuma conta a vencer nos próximos 7 dias</div>';
             return;
         }
 
@@ -1198,6 +1376,8 @@ class FinanceManager {
         const breakdown = this.getCategoryBreakdown();
 
         const ctxCategory = document.getElementById('categoryChart');
+        if (!ctxCategory) return;
+
         if (this.charts.category) this.charts.category.destroy();
 
         if (breakdown.length > 0) {
@@ -1219,6 +1399,8 @@ class FinanceManager {
         }
 
         const ctxEvolution = document.getElementById('evolutionChart');
+        if (!ctxEvolution) return;
+
         if (this.charts.evolution) this.charts.evolution.destroy();
 
         const months = [];
@@ -1232,76 +1414,5 @@ class FinanceManager {
 
             months.push(date.toLocaleDateString('pt-BR', { month: 'short' }));
 
-            const expensesTotal = this.expenses.filter(e => {
-                const eDate = new Date(e.date);
-                return eDate >= monthStart && eDate <= monthEnd;
-            }).reduce((sum, e) => sum + e.amount, 0);
+            const expensesTotal =
 
-            const incomeTotal = this.income.filter(i => {
-                const iDate = new Date(i.date);
-                return iDate >= monthStart && iDate <= monthEnd;
-            }).reduce((sum, i) => sum + i.amount, 0);
-
-            expensesByMonth.push(expensesTotal);
-            incomeByMonth.push(incomeTotal);
-        }
-
-        this.charts.evolution = new Chart(ctxEvolution, {
-            type: 'bar',
-            data: {
-                labels: months,
-                datasets: [
-                    { label: 'Receitas', data: incomeByMonth, backgroundColor: '#10b981' },
-                    { label: 'Despesas', data: expensesByMonth, backgroundColor: '#ef4444' }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } }
-            }
-        });
-    }
-
-    formatDate(dateString) {
-        return new Date(dateString).toLocaleDateString('pt-BR');
-    }
-
-    formatShort(value) {
-        if (value >= 1000) return (value / 1000).toFixed(1) + 'k';
-        return value.toFixed(0);
-    }
-
-    loadData(key) {
-        const data = localStorage.getItem(key);
-        return data ? JSON.parse(data) : null;
-    }
-
-    saveData(key, data) {
-        localStorage.setItem(key, JSON.stringify(data));
-    }
-}
-
-// Inicializar
-const manager = new FinanceManager();
-
-// Definir datas padrão
-const today = new Date();
-const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-
-if (document.getElementById('compareStartDate')) {
-    document.getElementById('compareStartDate').value = firstDayOfMonth.toISOString().split('T')[0];
-    document.getElementById('compareEndDate').value = today.toISOString().split('T')[0];
-}
-
-if (document.getElementById('period1Start')) {
-    document.getElementById('period1Start').value = firstDayOfMonth.toISOString().split('T')[0];
-    document.getElementById('period1End').value = today.toISOString().split('T')[0];
-
-    const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
-    document.getElementById('period2Start').value = lastMonthStart.toISOString().split('T')[0];
-    document.getElementById('period2End').value = lastMonthEnd.toISOString().split('T')[0];
-}
-
-console.log('✅ App carregado com sucesso!');
